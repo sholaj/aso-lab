@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "aks": {
+      "command": "<path of binary aks-mcp>",
+      "args": [
+        "--transport",
+        "stdio"
+      ]
+    }
+  }
+}

@@ -1,0 +1,31 @@
+# ASO Lab - Phase 3: Azure Storage Account
+# Depends on: Resource Group (rg-aso-workloads-shola)
+
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: stasoshola001  # Must be globally unique, lowercase, no hyphens
+  namespace: default
+spec:
+  location: northeurope
+  owner:
+    name: rg-aso-workloads-shola
+  kind: StorageV2
+  sku:
+    name: Standard_LRS  # Locally redundant storage (cheapest for lab)
+  accessTier: Hot
+  allowBlobPublicAccess: false
+  minimumTlsVersion: TLS1_2
+  supportsHttpsTrafficOnly: true
+  # Enable encryption
+  encryption:
+    keySource: Microsoft.Storage
+    services:
+      blob:
+        enabled: true
+      file:
+        enabled: true
+  tags:
+    purpose: aso-lab
+    owner: shola
+    managed-by: aso

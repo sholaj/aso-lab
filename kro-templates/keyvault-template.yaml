@@ -1,0 +1,66 @@
+# KRO Template - Key Vault
+# This defines a reusable template for creating Azure Key Vaults
+
+apiVersion: kro.run/v1alpha1
+kind: ResourceGroup
+metadata:
+  name: keyvault-template
+spec:
+  # Schema definition for template parameters
+  schema:
+    apiVersion: v1alpha1
+    kind: KeyVaultTemplate
+    spec:
+      name:
+        type: string
+        description: "Name of the Key Vault (must be globally unique)"
+      location:
+        type: string
+        description: "Azure region"
+        default: "northeurope"
+      resourceGroup:
+        type: string
+        description: "Name of the owner resource group"
+      tenantId:
+        type: string
+        description: "Azure AD tenant ID"
+      enableRbac:
+        type: boolean
+        description: "Enable RBAC authorization"
+        default: true
+      sku:
+        type: string
+        description: "SKU: standard or premium"
+        default: "standard"
+      tags:
+        type: object
+        description: "Resource tags"
+        default:
+          managed-by: kro
+
+  # Resources to create
+  resources:
+    - id: keyVault
+      template:
+        apiVersion: keyvault.azure.com/v1api20230701
+        kind: Vault
+        metadata:
+          name: "{{ .spec.name }}"
+          namespace: default
+        spec:
+          location: "{{ .spec.location }}"
+          owner:
+            name: "{{ .spec.resourceGroup }}"
+          properties:
+            enableRbacAuthorization: "{{ .spec.enableRbac }}"
+            enableSoftDelete: true
+            softDeleteRetentionInDays: 7
+            sku:
+              family: A
+              name: "{{ .spec.sku }}"
+            tenantId: "{{ .spec.tenantId }}"
+            publicNetworkAccess: Enabled
+            networkAcls:
+              bypass: AzureServices
+              defaultAction: Allow
+          tags: "{{ .spec.tags }}"

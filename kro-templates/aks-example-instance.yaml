@@ -1,0 +1,38 @@
+# Example: Deploy AKS Cluster using KRO Template
+# This creates a production-ready AKS cluster with monitoring and security features
+
+apiVersion: v1alpha1
+kind: AKSClusterTemplate
+metadata:
+  name: workload-cluster
+  namespace: default
+spec:
+  clusterName: aks-workload-cluster
+  location: northeurope
+  resourceGroup: rg-aso-workloads-shola
+  kubernetesVersion: "1.28.3"
+
+  # Node configuration
+  nodeCount: 2
+  nodeVMSize: Standard_D2s_v3
+
+  # Network configuration
+  networkPlugin: azure
+  networkPluginMode: overlay
+
+  # Enable RBAC
+  enableRBAC: true
+
+  # Optional: Link to Log Analytics Workspace
+  # logAnalyticsWorkspace: "/subscriptions/YOUR_SUB_ID/resourceGroups/rg-aso-workloads-shola/providers/Microsoft.OperationalInsights/workspaces/law-aso-lab-shola"
+
+  # Tags
+  tags:
+    environment: production
+    owner: shola
+    managed-by: kro
+    purpose: workload-cluster
+
+---
+# After cluster is created, you can add additional node pools:
+# kubectl apply -f aks-with-nodepool.yaml

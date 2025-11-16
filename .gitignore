@@ -1,0 +1,79 @@
+# Azure Service Operator Lab - .gitignore
+
+# Credentials and secrets
+/tmp/aso-credentials.env
+*.env
+*.credentials
+*-credentials.yaml
+*-secret.yaml
+
+# Backup files
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+
+# Kubernetes local config
+kubeconfig
+*.kubeconfig
+.kube/
+
+# Terraform (if added later)
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraform.lock.hcl
+
+# IDE and editor files
+.vscode/
+.idea/
+*.iml
+.DS_Store
+*.code-workspace
+
+# Logs
+*.log
+logs/
+
+# Flux bootstrap files (generated)
+flux/clusters/**/flux-system/
+
+# Argo CD secrets
+argo/secrets/
+
+# Azure CLI cache
+.azure/
+
+# Helm charts cache
+charts/
+*.tgz
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# Node modules (if any JavaScript tools are added)
+node_modules/
+
+# Python (if any Python scripts are added)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/

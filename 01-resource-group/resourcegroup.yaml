@@ -1,0 +1,17 @@
+# ASO Lab - First Resource: Resource Group
+# This is your first Azure Service Operator resource
+# Deploy with: kubectl apply -f resourcegroup.yaml
+# Monitor with: kubectl get resourcegroup -w
+# Inspect with: kubectl describe resourcegroup rg-aso-workloads-shola
+
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: rg-aso-workloads-shola
+  namespace: default
+spec:
+  location: northeurope
+  tags:
+    purpose: aso-lab-workloads
+    owner: shola
+    managed-by: aso

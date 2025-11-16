@@ -1,0 +1,24 @@
+# ASO Lab - Phase 3: Azure Container Registry
+# Depends on: Resource Group (rg-aso-workloads-shola)
+
+apiVersion: containerregistry.azure.com/v1api20230701
+kind: Registry
+metadata:
+  name: acrasoshola001  # Must be globally unique, alphanumeric only
+  namespace: default
+spec:
+  location: northeurope
+  owner:
+    name: rg-aso-workloads-shola
+  sku:
+    name: Basic  # Cost-optimized for lab (Basic, Standard, or Premium)
+  properties:
+    adminUserEnabled: false  # Use Azure RBAC instead
+    publicNetworkAccess: Enabled
+    # Basic SKU doesn't support these features (only Standard/Premium):
+    # - networkRuleBypassOptions
+    # - zoneRedundancy
+  tags:
+    purpose: aso-lab
+    owner: shola
+    managed-by: aso

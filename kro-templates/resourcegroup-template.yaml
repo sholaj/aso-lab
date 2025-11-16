@@ -1,0 +1,38 @@
+# KRO Template - Resource Group
+# This defines a reusable template for creating Azure Resource Groups
+
+apiVersion: kro.run/v1alpha1
+kind: ResourceGroup
+metadata:
+  name: resourcegroup-template
+spec:
+  # Schema definition for template parameters
+  schema:
+    apiVersion: v1alpha1
+    kind: ResourceGroupTemplate
+    spec:
+      name:
+        type: string
+        description: "Name of the resource group"
+      location:
+        type: string
+        description: "Azure region"
+        default: "northeurope"
+      tags:
+        type: object
+        description: "Resource tags"
+        default:
+          managed-by: kro
+
+  # Resources to create
+  resources:
+    - id: resourceGroup
+      template:
+        apiVersion: resources.azure.com/v1api20200601
+        kind: ResourceGroup
+        metadata:
+          name: "{{ .spec.name }}"
+          namespace: default
+        spec:
+          location: "{{ .spec.location }}"
+          tags: "{{ .spec.tags }}"

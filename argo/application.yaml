@@ -1,0 +1,77 @@
+# Argo CD Application
+# Defines what to deploy and from where
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aso-infrastructure
+  namespace: argocd
+spec:
+  # Project (default is fine for lab)
+  project: default
+
+  # Source: Git repository
+  source:
+    repoURL: https://github.com/sholaj/aso-lab
+    targetRevision: main
+    path: 01-resource-group
+
+  # Destination: Target cluster and namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true      # Delete resources not in Git
+      selfHeal: true   # Auto-sync when drift detected
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aso-storage
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sholaj/aso-lab
+    targetRevision: main
+    path: 03-storage
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aso-keyvault
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/sholaj/aso-lab
+    targetRevision: main
+    path: 02-keyvault
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

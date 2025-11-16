@@ -1,0 +1,28 @@
+# Flux GitRepository Source
+# Points Flux to your Git repository containing ASO/KRO manifests
+
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: aso-lab
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  url: https://github.com/sholaj/aso-lab
+  ref:
+    branch: main
+  # For private repos, create a secret:
+  # secretRef:
+  #   name: git-credentials
+
+---
+# Optional: If using a private repository, create this secret
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: git-credentials
+#   namespace: flux-system
+# type: Opaque
+# stringData:
+#   username: sholaj
+#   password: YOUR_GITHUB_PAT

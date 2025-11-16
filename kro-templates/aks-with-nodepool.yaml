@@ -1,0 +1,52 @@
+# Example: AKS Cluster with Additional Node Pool
+# This shows how to add a user node pool to an existing AKS cluster
+
+apiVersion: containerservice.azure.com/v1api20231001
+kind: ManagedClustersAgentPool
+metadata:
+  name: userpool
+  namespace: default
+spec:
+  # Owner reference to the AKS cluster
+  owner:
+    name: aks-workload-cluster  # Name of your AKS cluster
+
+  # Agent pool configuration
+  azureName: userpool
+  count: 2
+  vmSize: Standard_D4s_v3
+  mode: User  # User workloads (vs System for critical pods)
+  type: VirtualMachineScaleSets
+  osType: Linux
+  osDiskSizeGB: 128
+
+  # Auto-scaling
+  enableAutoScaling: true
+  minCount: 2
+  maxCount: 10
+
+  # Networking
+  maxPods: 110
+  vnetSubnetReference:
+    # Optional: reference to existing subnet
+    # armId: /subscriptions/.../subnets/aks-subnet
+
+  # Node labels for workload placement
+  nodeLabels:
+    workload-type: application
+    environment: production
+
+  # Node taints (optional)
+  nodeTaints:
+    - dedicated=application:NoSchedule
+
+  # Availability zones
+  availabilityZones:
+    - "1"
+    - "2"
+    - "3"
+
+  # Tags
+  tags:
+    purpose: user-workloads
+    managed-by: aso

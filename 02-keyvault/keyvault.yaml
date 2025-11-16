@@ -1,0 +1,29 @@
+# ASO Lab - Phase 3: Azure Key Vault
+# Depends on: Resource Group (rg-aso-workloads-shola)
+
+apiVersion: keyvault.azure.com/v1api20230701
+kind: Vault
+metadata:
+  name: kv-aso-lab-shola
+  namespace: default
+spec:
+  location: northeurope
+  owner:
+    name: rg-aso-workloads-shola
+  properties:
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 7
+    sku:
+      family: A
+      name: standard
+    tenantId: "TENANT_ID_PLACEHOLDER"  # Will be replaced during deployment
+    # For lab purposes, allow public access
+    publicNetworkAccess: Enabled
+    networkAcls:
+      bypass: AzureServices
+      defaultAction: Allow
+  tags:
+    purpose: aso-lab
+    owner: shola
+    managed-by: aso
