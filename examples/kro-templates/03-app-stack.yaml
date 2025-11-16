@@ -1,0 +1,286 @@
+# Application Stack Template
+# This template creates a complete application infrastructure stack
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aso-app-stack
+  labels:
+    purpose: demo
+    pattern: app-stack
+---
+# Resource Group for the entire stack
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: appstack-rg
+  namespace: aso-app-stack
+spec:
+  location: eastus
+  tags:
+    environment: dev
+    application: demo-app
+    managed-by: aso
+---
+# Log Analytics Workspace for monitoring
+apiVersion: operationalinsights.azure.com/v1api20221001
+kind: Workspace
+metadata:
+  name: appstackla001
+  namespace: aso-app-stack
+spec:
+  owner:
+    name: appstack-rg
+  location: eastus
+  properties:
+    sku:
+      name: PerGB2018
+    retentionInDays: 30
+  tags:
+    component: monitoring
+---
+# Storage Account for application data
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: appstacksa001
+  namespace: aso-app-stack
+spec:
+  owner:
+    name: appstack-rg
+  location: eastus
+  kind: StorageV2
+  sku:
+    name: Standard_LRS
+  properties:
+    accessTier: Hot
+    allowBlobPublicAccess: false
+    minimumTlsVersion: TLS1_2
+    supportsHttpsTrafficOnly: true
+    encryption:
+      services:
+        blob:
+          enabled: true
+        file:
+          enabled: true
+      keySource: Microsoft.Storage
+  tags:
+    component: storage
+---
+# Blob Service
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsBlobService
+metadata:
+  name: appstacksa001-blob
+  namespace: aso-app-stack
+spec:
+  owner:
+    name: appstacksa001
+  properties:
+    deleteRetentionPolicy:
+      enabled: true
+      days: 7
+    containerDeleteRetentionPolicy:
+      enabled: true
+      days: 7
+    isVersioningEnabled: true
+---
+# Container for application data
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsBlobServicesContainer
+metadata:
+  name: app-data
+  namespace: aso-app-stack
+spec:
+  owner:
+    name: appstacksa001-blob
+  properties:
+    publicAccess: None
+---
+# Key Vault for secrets
+apiVersion: keyvault.azure.com/v1api20230701
+kind: Vault
+metadata:
+  name: appstackkv001
+  namespace: aso-app-stack
+spec:
+  owner:
+    name: appstack-rg
+  location: eastus
+  properties:
+    tenantId: "00000000-0000-0000-0000-000000000000"  # Replace with your tenant ID
+    sku:
+      family: A
+      name: standard
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 7  # Short retention for dev
+    enablePurgeProtection: false   # Allow purge in dev
+    publicNetworkAccess: Enabled
+    networkAcls:
+      defaultAction: Allow
+      bypass: AzureServices
+  tags:
+    component: secrets
+---
+# Documentation ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-stack-docs
+  namespace: aso-app-stack
+data:
+  README.md: |
+    # Application Stack Template
+    
+    ## Overview
+    This template deploys a complete application infrastructure stack:
+    
+    - **Resource Group**: Container for all resources
+    - **Log Analytics**: Centralized logging and monitoring
+    - **Storage Account**: Application data storage with blob service
+    - **Key Vault**: Secrets management
+    
+    ## Architecture
+    ```
+    Resource Group (appstack-rg)
+    ├── Log Analytics Workspace (appstackla001)
+    ├── Storage Account (appstacksa001)
+    │   └── Blob Service
+    │       └── Container (app-data)
+    └── Key Vault (appstackkv001)
+    ```
+    
+    ## Deployment
+    ```bash
+    # Update tenant ID in the YAML first!
+    kubectl apply -f 03-app-stack.yaml
+    
+    # Watch all resources
+    kubectl get resourcegroups,workspaces,storageaccounts,vaults -n aso-app-stack -w
+    ```
+    
+    ## Usage Examples
+    
+    ### Store Application Secrets
+    ```bash
+    # Add yourself as Key Vault admin
+    USER_OBJECT_ID=$(az ad signed-in-user show --query id -o tsv)
+    VAULT_ID=$(az keyvault show --name appstackkv001 --resource-group appstack-rg --query id -o tsv)
+    
+    az role assignment create \
+      --role "Key Vault Administrator" \
+      --assignee $USER_OBJECT_ID \
+      --scope $VAULT_ID
+    
+    # Store database connection string
+    az keyvault secret set \
+      --vault-name appstackkv001 \
+      --name "db-connection-string" \
+      --value "Server=myserver;Database=mydb;User=user;Password=pass"
+    ```
+    
+    ### Upload Application Data
+    ```bash
+    # Get storage account key
+    STORAGE_KEY=$(az storage account keys list \
+      --account-name appstacksa001 \
+      --resource-group appstack-rg \
+      --query '[0].value' -o tsv)
+    
+    # Upload a file
+    az storage blob upload \
+      --account-name appstacksa001 \
+      --account-key $STORAGE_KEY \
+      --container-name app-data \
+      --name myfile.txt \
+      --file ./myfile.txt
+    ```
+    
+    ### Query Logs
+    ```bash
+    # If you have monitoring enabled
+    az monitor log-analytics query \
+      --workspace appstackla001 \
+      --analytics-query "Heartbeat | take 10"
+    ```
+    
+    ## Integration with Applications
+    
+    ### Using External Secrets Operator
+    ```yaml
+    apiVersion: external-secrets.io/v1beta1
+    kind: SecretStore
+    metadata:
+      name: azure-backend
+    spec:
+      provider:
+        azurekv:
+          vaultUrl: "https://appstackkv001.vault.azure.net"
+          authType: WorkloadIdentity
+    ---
+    apiVersion: external-secrets.io/v1beta1
+    kind: ExternalSecret
+    metadata:
+      name: app-secrets
+    spec:
+      refreshInterval: 1h
+      secretStoreRef:
+        name: azure-backend
+        kind: SecretStore
+      target:
+        name: app-secrets
+      data:
+        - secretKey: db-connection
+          remoteRef:
+            key: db-connection-string
+    ```
+    
+    ### Using CSI Secret Store Driver
+    ```yaml
+    apiVersion: secrets-store.csi.x-k8s.io/v1
+    kind: SecretProviderClass
+    metadata:
+      name: azure-kv-secrets
+    spec:
+      provider: azure
+      parameters:
+        keyvaultName: "appstackkv001"
+        objects: |
+          array:
+            - objectName: "db-connection-string"
+              objectType: "secret"
+    ```
+    
+    ## Customization
+    
+    This template can be customized for different environments:
+    
+    ### Development
+    - Shorter retention periods
+    - Standard SKUs
+    - Less restrictive network rules
+    
+    ### Production
+    - Longer retention periods (90+ days)
+    - Premium SKUs where needed
+    - Strict network rules
+    - Enable purge protection
+    - Enable monitoring and alerts
+    
+    ## Cost Estimation
+    
+    Approximate monthly costs (East US):
+    - Log Analytics: ~$2.30/GB ingested
+    - Storage Account: ~$0.02/GB (standard LRS)
+    - Key Vault: ~$0.03 per 10,000 operations
+    
+    Total: $10-50/month depending on usage
+    
+    ## Cleanup
+    ```bash
+    kubectl delete namespace aso-app-stack
+    # or
+    kubectl delete resourcegroup appstack-rg -n aso-app-stack
+    ```
