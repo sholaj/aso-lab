@@ -1,0 +1,342 @@
+# App of Apps Pattern
+# This is a parent application that manages child applications
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: app-of-apps
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/your-org/infrastructure-repo
+    targetRevision: main
+    path: argocd-apps  # Directory containing Application manifests
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Example directory structure for app-of-apps
+# 
+# argocd-apps/
+# ├── 01-system-apps.yaml           # System-level apps (ASO, cert-manager, etc.)
+# ├── 02-infrastructure-apps.yaml   # Infrastructure apps (storage, keyvault, etc.)
+# ├── 03-platform-apps.yaml         # Platform apps (monitoring, logging, etc.)
+# └── 04-application-apps.yaml      # Application workloads
+---
+# Example: System Apps Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: system-apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"  # Deploy first
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/infrastructure-repo
+    targetRevision: main
+    path: system
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Example: Infrastructure Apps Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure-apps
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"  # Deploy after system apps
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/infrastructure-repo
+    targetRevision: main
+    path: infrastructure
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# ConfigMap with app-of-apps guide
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-of-apps-guide
+  namespace: argocd
+data:
+  README.md: |
+    # App of Apps Pattern
+    
+    ## Overview
+    
+    The App of Apps pattern uses a parent application to manage multiple child applications.
+    This provides:
+    - Single source of truth for all applications
+    - Dependency management between applications
+    - Simplified bootstrap process
+    - Consistent deployment ordering
+    
+    ## Repository Structure
+    
+    ```
+    infrastructure-repo/
+    ├── argocd-apps/
+    │   ├── system.yaml            # ASO, cert-manager, external-secrets
+    │   ├── infrastructure.yaml    # Azure resources
+    │   ├── platform.yaml          # Monitoring, logging
+    │   └── applications.yaml      # Business applications
+    ├── system/
+    │   ├── aso/
+    │   ├── cert-manager/
+    │   └── external-secrets/
+    ├── infrastructure/
+    │   ├── resource-groups/
+    │   ├── storage/
+    │   ├── keyvault/
+    │   └── log-analytics/
+    ├── platform/
+    │   ├── prometheus/
+    │   ├── grafana/
+    │   └── loki/
+    └── applications/
+        ├── frontend/
+        ├── backend/
+        └── database/
+    ```
+    
+    ## Example: System Apps
+    
+    ```yaml
+    # argocd-apps/system.yaml
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: azure-service-operator
+      namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: default
+      source:
+        chart: azure-service-operator
+        repoURL: https://raw.githubusercontent.com/Azure/azure-service-operator/main/v2/charts
+        targetRevision: ">=2.0.0"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: azureserviceoperator-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+    ---
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: cert-manager
+      namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"
+    spec:
+      project: default
+      source:
+        chart: cert-manager
+        repoURL: https://charts.jetstack.io
+        targetRevision: v1.13.0
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: cert-manager
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+    ```
+    
+    ## Example: Infrastructure Apps
+    
+    ```yaml
+    # argocd-apps/infrastructure.yaml
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: resource-groups
+      namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/your-org/infrastructure-repo
+        targetRevision: main
+        path: infrastructure/resource-groups
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: default
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    ---
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: storage
+      namespace: argocd
+      annotations:
+        argocd.argoproj.io/sync-wave: "2"
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/your-org/infrastructure-repo
+        targetRevision: main
+        path: infrastructure/storage
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: default
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+    ```
+    
+    ## Bootstrap Process
+    
+    ### Initial Setup
+    
+    1. Install Argo CD:
+    ```bash
+    kubectl create namespace argocd
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    ```
+    
+    2. Create app-of-apps:
+    ```bash
+    kubectl apply -f 03-app-of-apps.yaml
+    ```
+    
+    3. Everything else deploys automatically!
+    
+    ### Sync Order
+    
+    Using sync waves, applications deploy in order:
+    1. Wave 0: System apps (ASO, cert-manager)
+    2. Wave 1: Resource Groups
+    3. Wave 2: Infrastructure (Storage, Key Vault)
+    4. Wave 3: Platform (Monitoring)
+    5. Wave 4: Applications
+    
+    ## Managing the App of Apps
+    
+    ```bash
+    # View parent app
+    argocd app get app-of-apps
+    
+    # List all child apps
+    argocd app list
+    
+    # Sync everything
+    argocd app sync app-of-apps
+    
+    # This will sync all child apps in order
+    ```
+    
+    ## Multi-Environment with App of Apps
+    
+    ```
+    argocd-apps/
+    ├── dev/
+    │   └── app-of-apps-dev.yaml
+    ├── staging/
+    │   └── app-of-apps-staging.yaml
+    └── production/
+        └── app-of-apps-prod.yaml
+    ```
+    
+    Each environment has its own app-of-apps pointing to environment-specific paths.
+    
+    ## Benefits
+    
+    1. **Single Entry Point**: Deploy everything with one application
+    2. **Dependency Management**: Use sync waves for ordering
+    3. **Environment Consistency**: Same structure across environments
+    4. **Easy Rollback**: Rollback the parent app rolls back children
+    5. **Disaster Recovery**: Restore entire cluster from Git
+    
+    ## Best Practices
+    
+    1. **Use sync waves**: Control deployment order
+    2. **Group logically**: System, infrastructure, platform, apps
+    3. **Keep it simple**: Don't nest too deeply
+    4. **Test thoroughly**: Validate sync order
+    5. **Document dependencies**: Make relationships clear
+    
+    ## Disaster Recovery
+    
+    To restore entire infrastructure:
+    
+    ```bash
+    # 1. Install Argo CD
+    kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+    
+    # 2. Create credentials
+    kubectl create secret generic aso-credential \
+      --namespace azureserviceoperator-system \
+      --from-literal=AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID \
+      --from-literal=AZURE_TENANT_ID=$AZURE_TENANT_ID \
+      --from-literal=AZURE_CLIENT_ID=$AZURE_CLIENT_ID \
+      --from-literal=AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET
+    
+    # 3. Deploy app-of-apps
+    kubectl apply -f app-of-apps.yaml
+    
+    # 4. Wait for everything to sync
+    argocd app sync app-of-apps --wait
+    ```
+    
+    Everything else restores automatically from Git!
+    
+    ## Monitoring
+    
+    ```bash
+    # Check app-of-apps status
+    argocd app get app-of-apps
+    
+    # Check all applications
+    argocd app list
+    
+    # View sync status
+    argocd app get app-of-apps --show-operation
+    
+    # Watch for changes
+    watch 'argocd app list'
+    ```

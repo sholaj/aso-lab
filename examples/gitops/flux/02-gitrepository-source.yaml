@@ -1,0 +1,224 @@
+# GitRepository Source for Flux
+# This defines where Flux reads your infrastructure manifests from
+
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: infrastructure-repo
+  namespace: flux-system
+spec:
+  # Git repository URL
+  url: https://github.com/your-org/your-infrastructure-repo
+  
+  # Branch to track
+  ref:
+    branch: main
+  
+  # How often to check for changes
+  interval: 1m
+  
+  # Optional: Use specific commit
+  # ref:
+  #   commit: abc123def456
+  
+  # Optional: Use tag
+  # ref:
+  #   tag: v1.0.0
+  
+  # Authentication (if private repo)
+  # secretRef:
+  #   name: git-credentials
+  
+  # Ignore certain paths
+  ignore: |
+    # Ignore CI/CD directories
+    .github/
+    .gitlab/
+    
+    # Ignore docs
+    docs/
+    *.md
+    
+    # Ignore temporary files
+    **/*.tmp
+    **/*.swp
+---
+# Secret for Git authentication (if needed)
+# Create this manually or use Flux CLI
+# 
+# Example using Flux CLI:
+# flux create secret git git-credentials \
+#   --url=https://github.com/your-org/your-infrastructure-repo \
+#   --username=git \
+#   --password=$GITHUB_TOKEN
+#
+# Or with SSH:
+# flux create secret git git-credentials \
+#   --url=ssh://git@github.com/your-org/your-infrastructure-repo \
+#   --private-key-file=./identity
+---
+# ConfigMap with usage examples
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitrepository-guide
+  namespace: flux-system
+data:
+  README.md: |
+    # GitRepository Source Configuration
+    
+    ## Creating a GitRepository
+    
+    ### Using kubectl
+    ```bash
+    kubectl apply -f 02-gitrepository-source.yaml
+    ```
+    
+    ### Using Flux CLI
+    ```bash
+    # Public repository
+    flux create source git infrastructure \
+      --url=https://github.com/your-org/infrastructure \
+      --branch=main \
+      --interval=1m
+    
+    # Private repository with HTTPS
+    flux create source git infrastructure \
+      --url=https://github.com/your-org/infrastructure \
+      --branch=main \
+      --username=git \
+      --password=$GITHUB_TOKEN \
+      --interval=1m
+    
+    # Private repository with SSH
+    flux create source git infrastructure \
+      --url=ssh://git@github.com/your-org/infrastructure \
+      --branch=main \
+      --private-key-file=./id_rsa \
+      --interval=1m
+    ```
+    
+    ## Repository Structure
+    
+    ### Recommended structure for ASO:
+    ```
+    infrastructure-repo/
+    ├── base/
+    │   ├── resource-groups/
+    │   │   └── rg.yaml
+    │   ├── storage/
+    │   │   ├── storage-account.yaml
+    │   │   └── containers.yaml
+    │   └── keyvault/
+    │       └── vault.yaml
+    ├── overlays/
+    │   ├── dev/
+    │   │   ├── kustomization.yaml
+    │   │   └── patches.yaml
+    │   ├── staging/
+    │   │   ├── kustomization.yaml
+    │   │   └── patches.yaml
+    │   └── production/
+    │       ├── kustomization.yaml
+    │       └── patches.yaml
+    └── clusters/
+        ├── dev-cluster/
+        │   └── kustomization.yaml
+        ├── staging-cluster/
+        │   └── kustomization.yaml
+        └── prod-cluster/
+            └── kustomization.yaml
+    ```
+    
+    ## Monitoring GitRepository
+    
+    ```bash
+    # Check source status
+    flux get sources git
+    
+    # Watch for changes
+    flux get sources git --watch
+    
+    # Describe source
+    kubectl describe gitrepository infrastructure-repo -n flux-system
+    
+    # View reconciliation events
+    kubectl get events --field-selector involvedObject.name=infrastructure-repo -n flux-system
+    ```
+    
+    ## Triggering Reconciliation
+    
+    ```bash
+    # Force immediate reconciliation
+    flux reconcile source git infrastructure-repo
+    
+    # Suspend reconciliation
+    flux suspend source git infrastructure-repo
+    
+    # Resume reconciliation
+    flux resume source git infrastructure-repo
+    ```
+    
+    ## Branch Strategies
+    
+    ### Strategy 1: Single Branch
+    ```
+    main branch
+    └── All environments in subdirectories
+    ```
+    
+    ### Strategy 2: Branch per Environment
+    ```
+    dev branch → Dev environment
+    staging branch → Staging environment
+    main branch → Production environment
+    ```
+    
+    ### Strategy 3: GitFlow
+    ```
+    feature/* → Development
+    develop → Staging
+    main → Production
+    ```
+    
+    ## Verification
+    
+    ```bash
+    # Check that source is ready
+    kubectl get gitrepository infrastructure-repo -n flux-system -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+    
+    # Should return: True
+    ```
+    
+    ## Troubleshooting
+    
+    ### Authentication failures
+    ```bash
+    # Check secret exists
+    kubectl get secret git-credentials -n flux-system
+    
+    # Recreate secret
+    flux create secret git git-credentials \
+      --url=https://github.com/your-org/infrastructure \
+      --username=git \
+      --password=$GITHUB_TOKEN
+    ```
+    
+    ### Repository not syncing
+    ```bash
+    # Check Flux source controller logs
+    kubectl logs -n flux-system deployment/source-controller
+    
+    # Force reconciliation
+    flux reconcile source git infrastructure-repo --with-source
+    ```
+    
+    ### Wrong branch
+    ```bash
+    # Update branch
+    flux create source git infrastructure-repo \
+      --url=https://github.com/your-org/infrastructure \
+      --branch=develop \
+      --export | kubectl apply -f -
+    ```
