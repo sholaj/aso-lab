@@ -1,0 +1,198 @@
+# Argo CD Application for ASO Installation
+
+---
+# Application to install ASO using Helm
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: azure-service-operator
+  namespace: argocd
+  # Finalizer ensures proper cleanup
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project for organization
+  project: default
+  
+  # Source: ASO Helm chart
+  source:
+    chart: azure-service-operator
+    repoURL: https://raw.githubusercontent.com/Azure/azure-service-operator/main/v2/charts
+    targetRevision: ">=2.0.0"
+    helm:
+      values: |
+        # Azure credentials from secret
+        # Create secret first:
+        # kubectl create secret generic aso-credential \
+        #   --namespace azureserviceoperator-system \
+        #   --from-literal=AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID \
+        #   --from-literal=AZURE_TENANT_ID=$AZURE_TENANT_ID \
+        #   --from-literal=AZURE_CLIENT_ID=$AZURE_CLIENT_ID \
+        #   --from-literal=AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET
+        
+        azureSubscriptionID: "${AZURE_SUBSCRIPTION_ID}"
+        azureTenantID: "${AZURE_TENANT_ID}"
+        azureClientID: "${AZURE_CLIENT_ID}"
+        azureClientSecret: "${AZURE_CLIENT_SECRET}"
+        
+        # CRD patterns - customize for your needs
+        crdPattern: "resources.azure.com/*;storage.azure.com/*;keyvault.azure.com/*;operationalinsights.azure.com/*;containerservice.azure.com/*"
+        
+        # Resource limits
+        resources:
+          limits:
+            cpu: 500m
+            memory: 512Mi
+          requests:
+            cpu: 200m
+            memory: 256Mi
+        
+        # Enable metrics
+        metrics:
+          enable: true
+  
+  # Destination: Install in azureserviceoperator-system namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: azureserviceoperator-system
+  
+  # Sync policy
+  syncPolicy:
+    automated:
+      # Auto-sync when Git changes
+      prune: true
+      selfHeal: true
+      # Allow empty values
+      allowEmpty: false
+    
+    syncOptions:
+      # Create namespace if it doesn't exist
+      - CreateNamespace=true
+      # Replace resources instead of applying
+      - Replace=false
+      # Server-side apply
+      - ServerSideApply=true
+    
+    # Retry configuration
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Ignore differences in these fields
+  ignoreDifferences:
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      jsonPointers:
+        - /status
+---
+# ConfigMap with usage instructions
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aso-argocd-setup
+  namespace: argocd
+data:
+  README.md: |
+    # ASO with Argo CD Setup
+    
+    ## Prerequisites
+    
+    1. Argo CD installed:
+    ```bash
+    kubectl get pods -n argocd
+    ```
+    
+    2. ASO credentials secret:
+    ```bash
+    kubectl create namespace azureserviceoperator-system
+    
+    kubectl create secret generic aso-credential \
+      --namespace azureserviceoperator-system \
+      --from-literal=AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID \
+      --from-literal=AZURE_TENANT_ID=$AZURE_TENANT_ID \
+      --from-literal=AZURE_CLIENT_ID=$AZURE_CLIENT_ID \
+      --from-literal=AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET
+    ```
+    
+    ## Deploy ASO
+    
+    ```bash
+    # Apply this manifest
+    kubectl apply -f 01-aso-application.yaml
+    
+    # Watch in CLI
+    argocd app get azure-service-operator
+    argocd app sync azure-service-operator --watch
+    
+    # Or view in UI
+    # https://localhost:8080
+    ```
+    
+    ## Verify Installation
+    
+    ```bash
+    # Check application status
+    argocd app get azure-service-operator
+    
+    # Check ASO pods
+    kubectl get pods -n azureserviceoperator-system
+    
+    # Check CRDs
+    kubectl get crds | grep azure.com | wc -l
+    ```
+    
+    ## Sync Application
+    
+    ```bash
+    # Manual sync
+    argocd app sync azure-service-operator
+    
+    # Refresh and sync
+    argocd app get azure-service-operator --refresh
+    argocd app sync azure-service-operator
+    ```
+    
+    ## Update ASO
+    
+    ```bash
+    # Update will happen automatically with auto-sync enabled
+    # Or manually trigger:
+    argocd app sync azure-service-operator
+    ```
+    
+    ## Rollback
+    
+    ```bash
+    # View history
+    argocd app history azure-service-operator
+    
+    # Rollback to previous version
+    argocd app rollback azure-service-operator <revision-number>
+    ```
+    
+    ## Troubleshooting
+    
+    ```bash
+    # View sync status
+    argocd app get azure-service-operator
+    
+    # View logs
+    kubectl logs -n azureserviceoperator-system deployment/azureserviceoperator-controller-manager -c manager
+    
+    # Force sync
+    argocd app sync azure-service-operator --force
+    
+    # Delete and recreate
+    argocd app delete azure-service-operator
+    kubectl apply -f 01-aso-application.yaml
+    ```
+    
+    ## Next Steps
+    
+    1. Create infrastructure application (see 02-infrastructure-app.yaml)
+    2. Set up app-of-apps pattern (see 03-app-of-apps.yaml)
+    3. Configure notifications
+    4. Set up RBAC

@@ -1,0 +1,86 @@
+# Basic Azure Storage Account Example
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: azure-storage
+---
+# Resource Group for Storage resources
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: storage-demo-rg
+  namespace: azure-storage
+spec:
+  location: eastus
+  tags:
+    environment: demo
+    service: storage
+    managed-by: aso
+---
+# Basic Storage Account with secure defaults
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: mysa001
+  namespace: azure-storage
+spec:
+  owner:
+    name: storage-demo-rg
+  location: eastus
+  kind: StorageV2
+  sku:
+    name: Standard_LRS
+  properties:
+    # Security settings
+    accessTier: Hot
+    allowBlobPublicAccess: false
+    minimumTlsVersion: TLS1_2
+    supportsHttpsTrafficOnly: true
+    
+    # Encryption settings
+    encryption:
+      services:
+        blob:
+          enabled: true
+          keyType: Account
+        file:
+          enabled: true
+          keyType: Account
+        table:
+          enabled: true
+          keyType: Account
+        queue:
+          enabled: true
+          keyType: Account
+      keySource: Microsoft.Storage
+    
+    # Network settings (optional - commented out for demo)
+    # networkAcls:
+    #   defaultAction: Deny
+    #   bypass: AzureServices
+    #   ipRules:
+    #     - value: "1.2.3.4"
+    #       action: Allow
+  
+  tags:
+    purpose: demo
+    tier: standard
+---
+# Optional: Create a secret to store connection details
+# ASO will populate this with storage account keys
+apiVersion: v1
+kind: Secret
+metadata:
+  name: storage-credentials
+  namespace: azure-storage
+type: Opaque
+stringData:
+  # These will be populated by ASO after storage account creation
+  instructions: |
+    To get the storage account keys, use:
+    az storage account keys list --account-name mysa001 --resource-group storage-demo-rg
+    
+    Or retrieve from Kubernetes secret created by ASO:
+    kubectl get secret -n azure-storage

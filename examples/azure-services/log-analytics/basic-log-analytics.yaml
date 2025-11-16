@@ -1,0 +1,175 @@
+# Basic Azure Log Analytics Workspace Example
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: azure-monitoring
+---
+# Resource Group for Monitoring resources
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: monitoring-demo-rg
+  namespace: azure-monitoring
+spec:
+  location: eastus
+  tags:
+    environment: demo
+    service: monitoring
+    managed-by: aso
+---
+# Log Analytics Workspace
+apiVersion: operationalinsights.azure.com/v1api20221001
+kind: Workspace
+metadata:
+  name: myloganalytics001
+  namespace: azure-monitoring
+spec:
+  owner:
+    name: monitoring-demo-rg
+  location: eastus
+  properties:
+    # SKU/Pricing tier
+    sku:
+      name: PerGB2018  # Pay-as-you-go pricing
+      # For commitment tiers, use: CapacityReservation with capacityReservationLevel
+    
+    # Data retention (30-730 days)
+    retentionInDays: 30
+    
+    # Public network access
+    publicNetworkAccessForIngestion: Enabled
+    publicNetworkAccessForQuery: Enabled
+    
+    # Features
+    features:
+      enableLogAccessUsingOnlyResourcePermissions: true
+  
+  tags:
+    purpose: demo
+    tier: standard
+---
+# ConfigMap with usage instructions
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: log-analytics-usage
+  namespace: azure-monitoring
+data:
+  README.md: |
+    # Log Analytics Workspace Usage
+    
+    ## Getting Workspace ID and Key
+    ```bash
+    # Get Workspace ID
+    az monitor log-analytics workspace show \
+      --resource-group monitoring-demo-rg \
+      --workspace-name myloganalytics001 \
+      --query customerId -o tsv
+    
+    # Get Workspace Key (Primary)
+    az monitor log-analytics workspace get-shared-keys \
+      --resource-group monitoring-demo-rg \
+      --workspace-name myloganalytics001 \
+      --query primarySharedKey -o tsv
+    ```
+    
+    ## Connecting AKS Cluster
+    ```bash
+    # Get workspace resource ID
+    WORKSPACE_ID=$(az monitor log-analytics workspace show \
+      --resource-group monitoring-demo-rg \
+      --workspace-name myloganalytics001 \
+      --query id -o tsv)
+    
+    # Enable monitoring for existing AKS cluster
+    az aks enable-addons \
+      --resource-group <aks-rg> \
+      --name <aks-cluster-name> \
+      --addons monitoring \
+      --workspace-resource-id $WORKSPACE_ID
+    ```
+    
+    ## Querying Logs
+    ```bash
+    # Run a query using Azure CLI
+    az monitor log-analytics query \
+      --workspace myloganalytics001 \
+      --analytics-query "Heartbeat | take 10" \
+      --output table
+    ```
+    
+    ## Common Queries
+    
+    ### Container Logs (last hour)
+    ```kql
+    ContainerLog
+    | where TimeGenerated > ago(1h)
+    | project TimeGenerated, Computer, ContainerID, LogEntry
+    | order by TimeGenerated desc
+    | take 100
+    ```
+    
+    ### Pod Inventory
+    ```kql
+    KubePodInventory
+    | where TimeGenerated > ago(15m)
+    | distinct Namespace, PodLabel, PodStatus, ServiceName
+    | order by Namespace asc
+    ```
+    
+    ### Failed Pods
+    ```kql
+    KubePodInventory
+    | where PodStatus == "Failed"
+    | where TimeGenerated > ago(1h)
+    | project TimeGenerated, Namespace, Name, PodStatus, Reason
+    | order by TimeGenerated desc
+    ```
+    
+    ## Setting Up Alerts
+    ```bash
+    # Create an alert rule
+    az monitor metrics alert create \
+      --name "high-cpu-alert" \
+      --resource-group monitoring-demo-rg \
+      --scopes $WORKSPACE_ID \
+      --condition "avg Percentage CPU > 80" \
+      --description "Alert when CPU usage is above 80%"
+    ```
+    
+    ## Export to Storage Account
+    ```bash
+    # Create a data export rule
+    az monitor log-analytics workspace data-export create \
+      --resource-group monitoring-demo-rg \
+      --workspace-name myloganalytics001 \
+      --name "export-to-storage" \
+      --destination <storage-account-resource-id> \
+      --enable true \
+      --tables "ContainerLog,KubePodInventory"
+    ```
+    
+    ## Viewing in Azure Portal
+    1. Navigate to Azure Portal
+    2. Search for "Log Analytics workspaces"
+    3. Select "myloganalytics001"
+    4. Click "Logs" to run queries
+    5. Use "Insights" for pre-built dashboards
+    
+    ## Cost Management
+    ```bash
+    # Check data ingestion volume
+    az monitor log-analytics workspace show \
+      --resource-group monitoring-demo-rg \
+      --workspace-name myloganalytics001 \
+      --query "properties.sku.capacityReservationLevel"
+    ```
+    
+    ## Cleanup
+    ```bash
+    kubectl delete workspace myloganalytics001 -n azure-monitoring
+    # or
+    kubectl delete resourcegroup monitoring-demo-rg -n azure-monitoring
+    ```
