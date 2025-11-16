@@ -1,0 +1,18 @@
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: {{ .Values.resourceGroup.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "aso-app-stack.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  location: {{ .Values.global.location }}
+  tags:
+    {{- toYaml .Values.resourceGroup.tags | nindent 4 }}
+    {{- toYaml .Values.commonTags | nindent 4 }}
+
+{{- define "aso-app-stack.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
+{{- end }}

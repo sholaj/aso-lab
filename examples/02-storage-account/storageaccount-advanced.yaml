@@ -1,0 +1,27 @@
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: asolabstorageadv
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: aso-lab-rg
+  kind: StorageV2
+  sku:
+    name: Standard_GRS  # Geo-redundant storage
+  accessTier: Hot
+  allowBlobPublicAccess: false
+  minimumTlsVersion: TLS1_2
+  # Enable advanced features
+  enableHttpsTrafficOnly: true
+  networkAcls:
+    defaultAction: Deny
+    bypass: AzureServices
+  # Enable blob versioning and change feed
+  blobServices:
+    - name: default
+      properties:
+        isVersioningEnabled: true
+        changeFeed:
+          enabled: true

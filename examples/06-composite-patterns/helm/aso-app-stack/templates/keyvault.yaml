@@ -1,0 +1,28 @@
+{{- if .Values.keyVault.enabled }}
+apiVersion: keyvault.azure.com/v1api20210401preview
+kind: Vault
+metadata:
+  name: {{ .Values.keyVault.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "aso-app-stack.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  location: {{ .Values.global.location }}
+  owner:
+    name: {{ .Values.resourceGroup.name }}
+  properties:
+    sku:
+      family: A
+      name: {{ .Values.keyVault.sku }}
+    tenantId: {{ .Values.global.tenantId }}
+    enableSoftDelete: {{ .Values.keyVault.softDelete }}
+    softDeleteRetentionInDays: {{ .Values.keyVault.softDeleteRetentionDays }}
+    enableRbacAuthorization: {{ .Values.keyVault.rbacAuthorization }}
+    {{- if .Values.keyVault.purgeProtection }}
+    enablePurgeProtection: true
+    {{- end }}
+  tags:
+    {{- toYaml .Values.commonTags | nindent 4 }}
+{{- end }}

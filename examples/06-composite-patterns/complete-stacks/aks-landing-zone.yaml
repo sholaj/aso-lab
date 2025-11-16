@@ -1,0 +1,211 @@
+---
+# AKS Landing Zone - Production-ready Kubernetes environment
+# This is a comprehensive KRO pattern for enterprise AKS deployment
+
+# Resource Group for AKS
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: aks-landing-zone-rg
+  namespace: default
+  labels:
+    stack: aks-landing-zone
+    pattern: kro-composite
+spec:
+  location: eastus
+  tags:
+    Stack: aks-landing-zone
+    Pattern: KRO-Composite
+    Environment: Production
+
+---
+# Virtual Network for AKS
+apiVersion: network.azure.com/v1api20201101
+kind: VirtualNetwork
+metadata:
+  name: aks-landing-zone-vnet
+  namespace: default
+  labels:
+    stack: aks-landing-zone
+spec:
+  location: eastus
+  owner:
+    name: aks-landing-zone-rg
+  addressSpace:
+    addressPrefixes:
+    - 10.200.0.0/16
+  subnets:
+  # AKS system node pool subnet
+  - name: aks-system-subnet
+    properties:
+      addressPrefix: 10.200.0.0/22  # 1024 IPs for nodes
+      serviceEndpoints:
+      - service: Microsoft.ContainerRegistry
+      - service: Microsoft.Storage
+      - service: Microsoft.KeyVault
+  
+  # AKS user workload subnet
+  - name: aks-workload-subnet
+    properties:
+      addressPrefix: 10.200.4.0/22  # 1024 IPs for workloads
+      serviceEndpoints:
+      - service: Microsoft.Storage
+      - service: Microsoft.Sql
+  
+  # Application Gateway subnet
+  - name: appgw-subnet
+    properties:
+      addressPrefix: 10.200.8.0/24
+  
+  # Private endpoints subnet
+  - name: private-endpoint-subnet
+    properties:
+      addressPrefix: 10.200.9.0/24
+
+---
+# Managed Identity for AKS
+apiVersion: managedidentity.azure.com/v1api20230131
+kind: UserAssignedIdentity
+metadata:
+  name: aks-landing-zone-identity
+  namespace: default
+  labels:
+    stack: aks-landing-zone
+spec:
+  location: eastus
+  owner:
+    name: aks-landing-zone-rg
+
+---
+# AKS Cluster
+apiVersion: containerservice.azure.com/v1api20231001
+kind: ManagedCluster
+metadata:
+  name: aks-landing-zone
+  namespace: default
+  labels:
+    stack: aks-landing-zone
+spec:
+  location: eastus
+  owner:
+    name: aks-landing-zone-rg
+  dnsPrefix: aks-landing-zone
+  kubernetesVersion: "1.28.0"
+  
+  # Use managed identity
+  identity:
+    type: UserAssigned
+    userAssignedIdentities:
+    - reference:
+        name: aks-landing-zone-identity
+  
+  # System node pool
+  agentPoolProfiles:
+  - name: system
+    count: 3
+    vmSize: Standard_D4s_v3
+    mode: System
+    osType: Linux
+    type: VirtualMachineScaleSets
+    vnetSubnetReference:
+      name: aks-system-subnet
+      owner:
+        name: aks-landing-zone-vnet
+    enableAutoScaling: true
+    minCount: 3
+    maxCount: 6
+    availabilityZones:
+    - "1"
+    - "2"
+    - "3"
+  
+  # Network configuration
+  networkProfile:
+    networkPlugin: azure
+    networkPluginMode: overlay
+    serviceCidr: 10.201.0.0/16
+    dnsServiceIP: 10.201.0.10
+    loadBalancerSku: standard
+  
+  # Enable RBAC and AAD
+  enableRBAC: true
+  aadProfile:
+    managed: true
+    enableAzureRBAC: true
+  
+  # Add-ons
+  addonProfiles:
+    azurepolicy:
+      enabled: true
+    azureKeyvaultSecretsProvider:
+      enabled: true
+      config:
+        enableSecretRotation: "true"
+  
+  # Auto-upgrade
+  autoUpgradeProfile:
+    upgradeChannel: stable
+  
+  # Security
+  securityProfile:
+    defender:
+      securityMonitoring:
+        enabled: true
+  
+  tags:
+    Stack: aks-landing-zone
+    Environment: Production
+    ManagedBy: ASO
+
+---
+# Storage Account for AKS state/logs
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: akslzstatesa
+  namespace: default
+  labels:
+    stack: aks-landing-zone
+spec:
+  location: eastus
+  owner:
+    name: aks-landing-zone-rg
+  kind: StorageV2
+  sku:
+    name: Standard_GRS
+  accessTier: Hot
+  allowBlobPublicAccess: false
+  minimumTlsVersion: TLS1_2
+  enableHttpsTrafficOnly: true
+  tags:
+    Stack: aks-landing-zone
+    Purpose: state-storage
+
+---
+# Key Vault for AKS secrets
+apiVersion: keyvault.azure.com/v1api20210401preview
+kind: Vault
+metadata:
+  name: aks-lz-kv
+  namespace: default
+  labels:
+    stack: aks-landing-zone
+spec:
+  location: eastus
+  owner:
+    name: aks-landing-zone-rg
+  properties:
+    sku:
+      family: A
+      name: premium  # Use premium for production
+    tenantId: "<your-tenant-id>"  # Replace with your tenant ID
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 90
+    enablePurgeProtection: true
+    enableRbacAuthorization: true
+    networkAcls:
+      defaultAction: Allow  # Configure based on your security requirements
+      bypass: AzureServices
+  tags:
+    Stack: aks-landing-zone
+    Environment: Production

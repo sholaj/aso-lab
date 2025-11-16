@@ -1,0 +1,22 @@
+apiVersion: network.azure.com/v1api20201101
+kind: VirtualNetwork
+metadata:
+  name: {{ .Values.vnet.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "aso-app-stack.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  location: {{ .Values.global.location }}
+  owner:
+    name: {{ .Values.resourceGroup.name }}
+  addressSpace:
+    addressPrefixes:
+    - {{ .Values.vnet.addressSpace }}
+  subnets:
+  {{- range .Values.vnet.subnets }}
+  - name: {{ .name }}
+    properties:
+      addressPrefix: {{ .addressPrefix }}
+  {{- end }}

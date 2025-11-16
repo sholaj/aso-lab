@@ -1,0 +1,35 @@
+# Production environment values
+global:
+  location: eastus
+  tenantId: "<your-tenant-id>"
+
+resourceGroup:
+  name: helm-app-prod-rg
+  tags:
+    ManagedBy: Helm
+    Pattern: KRO-Composite
+    Environment: Production
+    Compliance: Required
+
+vnet:
+  name: helm-app-prod-vnet
+  addressSpace: 10.70.0.0/16
+
+storage:
+  name: helmappprodsa
+  sku: Standard_GRS  # Geo-redundant for production
+  accessTier: Hot
+  exportSecrets: true
+
+keyVault:
+  enabled: true
+  name: helm-app-prod-kv
+  sku: premium  # Premium for production
+  softDeleteRetentionDays: 90
+  purgeProtection: true
+
+commonTags:
+  Project: ASO-Lab
+  Environment: Production
+  CostCenter: ProdOps
+  Compliance: Required

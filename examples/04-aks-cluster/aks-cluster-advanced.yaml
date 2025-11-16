@@ -1,0 +1,89 @@
+apiVersion: containerservice.azure.com/v1api20231001
+kind: ManagedCluster
+metadata:
+  name: aso-lab-aks-prod
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: aso-lab-rg
+  
+  # DNS prefix
+  dnsPrefix: aso-lab-aks-prod
+  
+  # Latest stable version
+  kubernetesVersion: "1.28.0"
+  
+  # Identity
+  identity:
+    type: UserAssigned
+    userAssignedIdentities:
+    - reference:
+        name: aks-identity
+  
+  # System node pool (required)
+  agentPoolProfiles:
+  - name: system
+    count: 3
+    vmSize: Standard_D4s_v3
+    mode: System
+    osType: Linux
+    type: VirtualMachineScaleSets
+    vnetSubnetReference:
+      name: aks-subnet
+      owner:
+        name: aso-lab-vnet-multi
+    # Enable autoscaling
+    enableAutoScaling: true
+    minCount: 3
+    maxCount: 6
+    # Spread across availability zones
+    availabilityZones:
+    - "1"
+    - "2"
+    - "3"
+  
+  # Network configuration with Azure CNI
+  networkProfile:
+    networkPlugin: azure
+    networkPluginMode: overlay
+    serviceCidr: 10.2.0.0/16
+    dnsServiceIP: 10.2.0.10
+    loadBalancerSku: standard
+  
+  # Enable features
+  enableRBAC: true
+  aadProfile:
+    managed: true
+    enableAzureRBAC: true
+  
+  # API server access
+  apiServerAccessProfile:
+    enablePrivateCluster: false
+  
+  # Add-ons
+  addonProfiles:
+    azurepolicy:
+      enabled: true
+      config:
+        version: "v2"
+    azureKeyvaultSecretsProvider:
+      enabled: true
+      config:
+        enableSecretRotation: "true"
+  
+  # Auto-upgrade configuration
+  autoUpgradeProfile:
+    upgradeChannel: stable
+  
+  # Security
+  securityProfile:
+    defender:
+      securityMonitoring:
+        enabled: true
+  
+  # Tags
+  tags:
+    Environment: Production
+    ManagedBy: ASO
+    Project: ASO-Lab

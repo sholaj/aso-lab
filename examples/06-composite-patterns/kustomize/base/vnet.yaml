@@ -1,0 +1,16 @@
+apiVersion: network.azure.com/v1api20201101
+kind: VirtualNetwork
+metadata:
+  name: kustomize-app-vnet
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: kustomize-app-rg
+  addressSpace:
+    addressPrefixes:
+    - 10.50.0.0/16
+  subnets:
+  - name: app-subnet
+    properties:
+      addressPrefix: 10.50.1.0/24

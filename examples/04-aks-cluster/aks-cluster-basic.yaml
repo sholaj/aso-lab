@@ -1,0 +1,45 @@
+apiVersion: containerservice.azure.com/v1api20231001
+kind: ManagedCluster
+metadata:
+  name: aso-lab-aks
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: aso-lab-rg
+  
+  # DNS prefix for the cluster
+  dnsPrefix: aso-lab-aks
+  
+  # Kubernetes version
+  kubernetesVersion: "1.28.0"
+  
+  # Identity configuration
+  identity:
+    type: UserAssigned
+    userAssignedIdentities:
+    - reference:
+        name: aks-identity
+  
+  # Node pool configuration
+  agentPoolProfiles:
+  - name: system
+    count: 1
+    vmSize: Standard_B2s
+    mode: System
+    osType: Linux
+    type: VirtualMachineScaleSets
+    vnetSubnetReference:
+      name: aks-subnet
+      owner:
+        name: aso-lab-vnet-multi
+  
+  # Network configuration
+  networkProfile:
+    networkPlugin: azure
+    serviceCidr: 10.2.0.0/16
+    dnsServiceIP: 10.2.0.10
+    loadBalancerSku: standard
+  
+  # Enable RBAC
+  enableRBAC: true

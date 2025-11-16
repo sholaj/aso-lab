@@ -1,0 +1,16 @@
+apiVersion: network.azure.com/v1api20201101
+kind: VirtualNetwork
+metadata:
+  name: aso-lab-vnet
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: aso-lab-rg
+  addressSpace:
+    addressPrefixes:
+    - 10.0.0.0/16
+  subnets:
+  - name: default-subnet
+    properties:
+      addressPrefix: 10.0.1.0/24
