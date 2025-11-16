@@ -1,0 +1,384 @@
+# Argo CD Application for Infrastructure
+# This defines an application that manages Azure infrastructure
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure
+  namespace: argocd
+  # Finalizer ensures proper cleanup
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  # Project (namespace for apps)
+  project: default
+  
+  # Source repository
+  source:
+    repoURL: https://github.com/your-org/infrastructure-repo
+    targetRevision: main
+    path: infrastructure
+    
+    # Optional: Use specific commit
+    # targetRevision: abc123def456
+    
+    # Optional: Use tag
+    # targetRevision: v1.0.0
+    
+    # Kustomize configuration
+    # kustomize:
+    #   images:
+    #     - nginx:1.21.0
+    
+    # Helm configuration
+    # helm:
+    #   valueFiles:
+    #     - values.yaml
+    #   parameters:
+    #     - name: environment
+    #       value: production
+  
+  # Destination cluster and namespace
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  
+  # Sync policy
+  syncPolicy:
+    # Automatic sync
+    automated:
+      # Automatically sync when Git changes
+      prune: true
+      # Restore resources if manually changed
+      selfHeal: true
+      # Allow empty directories
+      allowEmpty: false
+    
+    # Sync options
+    syncOptions:
+      # Create namespace if it doesn't exist
+      - CreateNamespace=true
+      # Validate resources before applying
+      - Validate=true
+      # Use server-side apply
+      - ServerSideApply=false
+      # Respect ignore differences
+      - RespectIgnoreDifferences=true
+    
+    # Retry configuration
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Ignore differences in certain fields
+  ignoreDifferences:
+    - group: resources.azure.com
+      kind: ResourceGroup
+      jsonPointers:
+        - /status
+    - group: storage.azure.com
+      kind: StorageAccount
+      jsonPointers:
+        - /status
+        - /metadata/managedFields
+---
+# Application for dev environment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    environment: dev
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/infrastructure-repo
+    targetRevision: main
+    path: overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Application for staging environment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    environment: staging
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/infrastructure-repo
+    targetRevision: main
+    path: overlays/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+# Application for production (manual sync)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infrastructure-production
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    environment: production
+  annotations:
+    # Notification on sync
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: infrastructure-alerts
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/infrastructure-repo
+    targetRevision: main  # Use stable tags in production: v1.0.0
+    path: overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    # Manual sync for production
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+---
+# ConfigMap with usage guide
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: infrastructure-app-guide
+  namespace: argocd
+data:
+  README.md: |
+    # Infrastructure Application Guide
+    
+    ## Deploying Applications
+    
+    ```bash
+    # Apply application manifests
+    kubectl apply -f 02-infrastructure-app.yaml
+    
+    # View in CLI
+    argocd app list
+    argocd app get infrastructure
+    
+    # Or view in UI
+    open https://localhost:8080
+    ```
+    
+    ## Syncing Applications
+    
+    ### Automatic Sync (Dev/Staging)
+    Changes in Git are automatically applied:
+    ```bash
+    # View sync status
+    argocd app get infrastructure-dev
+    
+    # Watch sync progress
+    argocd app sync infrastructure-dev --watch
+    ```
+    
+    ### Manual Sync (Production)
+    Requires manual approval:
+    ```bash
+    # Preview changes
+    argocd app diff infrastructure-production
+    
+    # Sync manually
+    argocd app sync infrastructure-production
+    
+    # Or approve in UI
+    open https://localhost:8080/applications/infrastructure-production
+    ```
+    
+    ## Progressive Deployment
+    
+    Deploy changes through environments:
+    
+    1. **Dev**: Auto-sync, immediate feedback
+    2. **Staging**: Auto-sync after validation
+    3. **Production**: Manual sync with approval
+    
+    ```bash
+    # 1. Commit changes to Git
+    git commit -m "Update storage configuration"
+    git push
+    
+    # 2. Dev auto-syncs
+    argocd app wait infrastructure-dev
+    
+    # 3. Staging auto-syncs
+    argocd app wait infrastructure-staging
+    
+    # 4. Manually sync production
+    argocd app sync infrastructure-production
+    ```
+    
+    ## Application Status
+    
+    ```bash
+    # Get status
+    argocd app get infrastructure
+    
+    # Check health
+    argocd app get infrastructure --show-operation
+    
+    # View history
+    argocd app history infrastructure
+    
+    # List resources
+    argocd app resources infrastructure
+    ```
+    
+    ## Rollback
+    
+    ```bash
+    # View history
+    argocd app history infrastructure-production
+    
+    # Rollback to specific revision
+    argocd app rollback infrastructure-production <revision>
+    
+    # Rollback to previous
+    argocd app rollback infrastructure-production
+    ```
+    
+    ## Sync Waves
+    
+    Control deployment order with annotations:
+    
+    ```yaml
+    apiVersion: resources.azure.com/v1api20200601
+    kind: ResourceGroup
+    metadata:
+      name: my-rg
+      annotations:
+        argocd.argoproj.io/sync-wave: "0"  # Deploy first
+    ---
+    apiVersion: storage.azure.com/v1api20230101
+    kind: StorageAccount
+    metadata:
+      name: mysa
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"  # Deploy after RG
+    ---
+    apiVersion: keyvault.azure.com/v1api20230701
+    kind: Vault
+    metadata:
+      name: mykv
+      annotations:
+        argocd.argoproj.io/sync-wave: "1"  # Deploy with storage
+    ```
+    
+    ## Sync Windows
+    
+    Control when syncs can happen:
+    
+    ```yaml
+    metadata:
+      annotations:
+        # Only sync during business hours
+        argocd.argoproj.io/sync-window: |
+          kind: allow
+          schedule: "* 9-17 * * Mon-Fri"
+          duration: 8h
+          timezone: America/New_York
+    ```
+    
+    ## Resource Hooks
+    
+    Run jobs before/after sync:
+    
+    ```yaml
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: pre-sync-validation
+      annotations:
+        argocd.argoproj.io/hook: PreSync
+        argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    spec:
+      template:
+        spec:
+          containers:
+            - name: validate
+              image: azure-cli
+              command: ["az", "account", "show"]
+          restartPolicy: Never
+    ```
+    
+    ## Troubleshooting
+    
+    ### Application OutOfSync
+    ```bash
+    # View differences
+    argocd app diff infrastructure
+    
+    # Force sync
+    argocd app sync infrastructure --force
+    
+    # Refresh cache
+    argocd app get infrastructure --refresh
+    ```
+    
+    ### Sync Failures
+    ```bash
+    # View sync logs
+    argocd app logs infrastructure
+    
+    # Check application events
+    kubectl describe application infrastructure -n argocd
+    
+    # Check resource status
+    argocd app get infrastructure --show-operation
+    ```
+    
+    ### Health Check Issues
+    ```bash
+    # View resource health
+    argocd app get infrastructure
+    
+    # Check specific resource
+    kubectl describe <resource-type> <name> -n <namespace>
+    
+    # View ASO controller logs
+    kubectl logs -n azureserviceoperator-system deployment/azureserviceoperator-controller-manager
+    ```
+    
+    ## Best Practices
+    
+    1. **Use projects**: Organize applications by team/environment
+    2. **Enable auto-sync for dev**: Fast feedback loop
+    3. **Manual sync for prod**: Control production changes
+    4. **Use sync waves**: Control deployment order
+    5. **Set up notifications**: Alert on failures
+    6. **Regular rollback tests**: Ensure you can rollback quickly

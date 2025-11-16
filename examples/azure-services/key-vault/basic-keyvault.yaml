@@ -1,0 +1,143 @@
+# Basic Azure Key Vault Example
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: azure-keyvault
+---
+# Resource Group for Key Vault
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: keyvault-demo-rg
+  namespace: azure-keyvault
+spec:
+  location: eastus
+  tags:
+    environment: demo
+    service: keyvault
+    managed-by: aso
+---
+# Key Vault with RBAC authorization
+apiVersion: keyvault.azure.com/v1api20230701
+kind: Vault
+metadata:
+  name: mykeyvault001
+  namespace: azure-keyvault
+spec:
+  owner:
+    name: keyvault-demo-rg
+  location: eastus
+  properties:
+    # Tenant ID - replace with your Azure AD tenant ID
+    tenantId: "00000000-0000-0000-0000-000000000000"
+    
+    # SKU
+    sku:
+      family: A
+      name: standard  # or 'premium' for HSM-backed keys
+    
+    # RBAC authorization (recommended)
+    enableRbacAuthorization: true
+    
+    # Soft delete settings (highly recommended for production)
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 90
+    
+    # Purge protection (prevents permanent deletion during retention period)
+    enablePurgeProtection: true
+    
+    # Network settings
+    publicNetworkAccess: Enabled
+    networkAcls:
+      defaultAction: Allow  # Change to Deny for production with specific network rules
+      bypass: AzureServices
+      # ipRules:
+      #   - value: "1.2.3.4/32"
+      # virtualNetworkRules:
+      #   - id: /subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<subnet>
+    
+    # Additional features
+    enabledForDeployment: false  # Allow Azure VMs to retrieve certificates
+    enabledForDiskEncryption: false  # Allow Azure Disk Encryption to retrieve secrets
+    enabledForTemplateDeployment: false  # Allow ARM templates to retrieve secrets
+  
+  tags:
+    purpose: demo
+    tier: standard
+---
+# ConfigMap with usage instructions
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keyvault-usage
+  namespace: azure-keyvault
+data:
+  README.md: |
+    # Key Vault Usage Guide
+    
+    ## Accessing the Key Vault
+    
+    ### Set up RBAC permissions
+    ```bash
+    # Get your Azure AD user Object ID
+    USER_OBJECT_ID=$(az ad signed-in-user show --query id -o tsv)
+    
+    # Assign Key Vault Administrator role
+    az role assignment create \
+      --role "Key Vault Administrator" \
+      --assignee $USER_OBJECT_ID \
+      --scope /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/keyvault-demo-rg/providers/Microsoft.KeyVault/vaults/mykeyvault001
+    ```
+    
+    ### Add a secret
+    ```bash
+    az keyvault secret set \
+      --vault-name mykeyvault001 \
+      --name "db-password" \
+      --value "SuperSecretPassword123!"
+    ```
+    
+    ### Retrieve a secret
+    ```bash
+    az keyvault secret show \
+      --vault-name mykeyvault001 \
+      --name "db-password" \
+      --query value -o tsv
+    ```
+    
+    ### List all secrets
+    ```bash
+    az keyvault secret list --vault-name mykeyvault001
+    ```
+    
+    ## Using with Kubernetes
+    
+    ### Option 1: Secrets Store CSI Driver
+    Install the CSI driver and configure a SecretProviderClass.
+    
+    ### Option 2: External Secrets Operator
+    Create an ExternalSecret resource that syncs from Key Vault.
+    
+    ### Option 3: Workload Identity
+    Use Azure Workload Identity for pod-level access to Key Vault.
+    
+    ## Monitoring
+    ```bash
+    # Enable diagnostic settings
+    az monitor diagnostic-settings create \
+      --resource /subscriptions/<SUB_ID>/resourceGroups/keyvault-demo-rg/providers/Microsoft.KeyVault/vaults/mykeyvault001 \
+      --name "keyvault-diagnostics" \
+      --logs '[{"category":"AuditEvent","enabled":true}]' \
+      --workspace <LOG_ANALYTICS_WORKSPACE_ID>
+    ```
+    
+    ## Cleanup
+    ```bash
+    # Delete the Key Vault (soft-delete protects for 90 days)
+    kubectl delete vault mykeyvault001 -n azure-keyvault
+    
+    # Or delete the entire resource group
+    kubectl delete resourcegroup keyvault-demo-rg -n azure-keyvault
+    ```

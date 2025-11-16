@@ -1,0 +1,132 @@
+# Basic Resource Template
+# This template demonstrates a simple parameterized Azure Storage Account
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aso-templates
+  labels:
+    app.kubernetes.io/managed-by: kro
+---
+# Template for Resource Group
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: template-rg
+  namespace: aso-templates
+  labels:
+    template: basic
+    managed-by: kro
+spec:
+  location: eastus
+  tags:
+    purpose: template-demo
+    created-by: kro
+---
+# Template for Storage Account
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: templatesa001
+  namespace: aso-templates
+  labels:
+    template: basic
+    managed-by: kro
+  annotations:
+    # This annotation documents the template parameters
+    kro.dev/parameters: |
+      - name: storageAccountName
+        description: Name of the storage account (3-24 chars, lowercase, numbers only)
+        default: templatesa001
+      - name: location
+        description: Azure region
+        default: eastus
+      - name: skuName
+        description: Storage account SKU
+        default: Standard_LRS
+        allowed: [Standard_LRS, Standard_GRS, Standard_RAGRS, Standard_ZRS, Premium_LRS]
+spec:
+  owner:
+    name: template-rg
+  location: eastus
+  kind: StorageV2
+  sku:
+    name: Standard_LRS
+  properties:
+    accessTier: Hot
+    allowBlobPublicAccess: false
+    minimumTlsVersion: TLS1_2
+    supportsHttpsTrafficOnly: true
+    encryption:
+      services:
+        blob:
+          enabled: true
+        file:
+          enabled: true
+      keySource: Microsoft.Storage
+---
+# ConfigMap to document template usage
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: basic-template-docs
+  namespace: aso-templates
+data:
+  README.md: |
+    # Basic Resource Template
+    
+    ## Description
+    This template creates a basic Azure Storage Account with secure defaults.
+    
+    ## Resources Created
+    - Resource Group
+    - Storage Account (with encryption enabled)
+    
+    ## Usage
+    
+    ### Direct Apply
+    ```bash
+    kubectl apply -f 01-basic-template.yaml
+    ```
+    
+    ### Customize
+    1. Copy this file
+    2. Edit the spec.location and spec.sku values
+    3. Update metadata.name to your desired name
+    4. Apply: `kubectl apply -f your-customized-template.yaml`
+    
+    ### With Kustomize
+    Create a kustomization.yaml:
+    ```yaml
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    
+    resources:
+      - 01-basic-template.yaml
+    
+    patches:
+      - target:
+          kind: StorageAccount
+        patch: |-
+          - op: replace
+            path: /spec/location
+            value: westus2
+    ```
+    
+    ## Validation
+    ```bash
+    # Check status
+    kubectl get storageaccount templatesa001 -n aso-templates
+    
+    # View details
+    kubectl describe storageaccount templatesa001 -n aso-templates
+    
+    # Get Azure resource details
+    kubectl get storageaccount templatesa001 -n aso-templates -o jsonpath='{.status}'
+    ```
+    
+    ## Cleanup
+    ```bash
+    kubectl delete -f 01-basic-template.yaml
+    ```

@@ -1,0 +1,136 @@
+# Flux Setup for ASO
+# This example shows how to deploy ASO using Flux
+
+---
+# HelmRepository for ASO
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: HelmRepository
+metadata:
+  name: aso
+  namespace: flux-system
+spec:
+  interval: 10m
+  url: https://raw.githubusercontent.com/Azure/azure-service-operator/main/v2/charts
+---
+# HelmRelease for ASO
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: azure-service-operator
+  namespace: flux-system
+spec:
+  interval: 10m
+  chart:
+    spec:
+      chart: azure-service-operator
+      version: ">=2.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: aso
+        namespace: flux-system
+      interval: 5m
+  
+  targetNamespace: azureserviceoperator-system
+  
+  install:
+    crds: CreateReplace
+    createNamespace: true
+  
+  upgrade:
+    crds: CreateReplace
+  
+  values:
+    # Azure credentials - these should be created as a secret
+    # kubectl create secret generic aso-credential \
+    #   --namespace azureserviceoperator-system \
+    #   --from-literal=AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID \
+    #   --from-literal=AZURE_TENANT_ID=$AZURE_TENANT_ID \
+    #   --from-literal=AZURE_CLIENT_ID=$AZURE_CLIENT_ID \
+    #   --from-literal=AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET
+    
+    azureSubscriptionID: "${AZURE_SUBSCRIPTION_ID}"
+    azureTenantID: "${AZURE_TENANT_ID}"
+    azureClientID: "${AZURE_CLIENT_ID}"
+    azureClientSecret: "${AZURE_CLIENT_SECRET}"
+    
+    # CRD patterns - install only what you need
+    crdPattern: |
+      resources.azure.com/*;
+      storage.azure.com/*;
+      keyvault.azure.com/*;
+      operationalinsights.azure.com/*;
+      containerservice.azure.com/*
+    
+    # Resource configuration
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 200m
+        memory: 256Mi
+    
+    # Metrics
+    metrics:
+      enable: true
+      port: 8080
+---
+# ConfigMap with instructions
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flux-aso-setup
+  namespace: flux-system
+data:
+  README.md: |
+    # Flux + ASO Setup
+    
+    ## Prerequisites
+    
+    1. Flux installed in the cluster:
+    ```bash
+    flux check
+    ```
+    
+    2. ASO credentials secret created:
+    ```bash
+    kubectl create secret generic aso-credential \
+      --namespace azureserviceoperator-system \
+      --from-literal=AZURE_SUBSCRIPTION_ID=$AZURE_SUBSCRIPTION_ID \
+      --from-literal=AZURE_TENANT_ID=$AZURE_TENANT_ID \
+      --from-literal=AZURE_CLIENT_ID=$AZURE_CLIENT_ID \
+      --from-literal=AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET
+    ```
+    
+    ## Deploy ASO with Flux
+    
+    ```bash
+    # Apply this manifest
+    kubectl apply -f 01-flux-setup.yaml
+    
+    # Watch the HelmRelease
+    flux get helmreleases -n flux-system
+    
+    # Check ASO deployment
+    kubectl get pods -n azureserviceoperator-system
+    ```
+    
+    ## Next Steps
+    
+    1. Set up a GitRepository source (see 02-gitrepository-source.yaml)
+    2. Create Kustomizations for infrastructure (see 03-kustomization-infrastructure.yaml)
+    3. Define ASO resources in Git
+    4. Push to Git and watch Flux reconcile
+    
+    ## Monitoring
+    
+    ```bash
+    # Watch HelmRelease status
+    kubectl get helmrelease azure-service-operator -n flux-system -w
+    
+    # View Flux logs
+    flux logs --follow
+    
+    # Check ASO controller
+    kubectl logs -n azureserviceoperator-system deployment/azureserviceoperator-controller-manager -c manager
+    ```

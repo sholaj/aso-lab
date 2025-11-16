@@ -1,0 +1,315 @@
+# Multi-Environment Template
+# This shows how to structure resources for multiple environments using Kustomize
+
+---
+# Base template - shared configuration
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aso-multienv
+---
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: base-rg
+  namespace: aso-multienv
+  annotations:
+    # This will be overridden per environment
+    environment: base
+spec:
+  location: eastus  # Can be overridden
+  tags:
+    managed-by: aso
+    pattern: multi-env
+---
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: basesa001
+  namespace: aso-multienv
+  annotations:
+    environment: base
+spec:
+  owner:
+    name: base-rg
+  location: eastus
+  kind: StorageV2
+  sku:
+    name: Standard_LRS  # Can be overridden
+  properties:
+    accessTier: Hot
+    allowBlobPublicAccess: false
+    minimumTlsVersion: TLS1_2
+    supportsHttpsTrafficOnly: true
+---
+# ConfigMap with Kustomize overlays structure
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: multienv-guide
+  namespace: aso-multienv
+data:
+  README.md: |
+    # Multi-Environment Template
+    
+    ## Directory Structure
+    
+    ```
+    base/
+    ├── kustomization.yaml
+    ├── resource-group.yaml
+    └── storage.yaml
+    
+    overlays/
+    ├── dev/
+    │   ├── kustomization.yaml
+    │   └── patches.yaml
+    ├── staging/
+    │   ├── kustomization.yaml
+    │   └── patches.yaml
+    └── production/
+        ├── kustomization.yaml
+        └── patches.yaml
+    ```
+    
+    ## Base Kustomization
+    
+    ```yaml
+    # base/kustomization.yaml
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    
+    resources:
+      - resource-group.yaml
+      - storage.yaml
+    
+    commonLabels:
+      app: my-app
+      managed-by: kustomize
+    ```
+    
+    ## Dev Overlay
+    
+    ```yaml
+    # overlays/dev/kustomization.yaml
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    
+    namespace: dev
+    namePrefix: dev-
+    
+    bases:
+      - ../../base
+    
+    commonLabels:
+      environment: dev
+    
+    patches:
+      - target:
+          kind: ResourceGroup
+        patch: |-
+          - op: replace
+            path: /spec/location
+            value: eastus
+          - op: add
+            path: /spec/tags/environment
+            value: development
+      
+      - target:
+          kind: StorageAccount
+        patch: |-
+          - op: replace
+            path: /spec/sku/name
+            value: Standard_LRS
+          - op: replace
+            path: /spec/properties/accessTier
+            value: Hot
+    ```
+    
+    ## Staging Overlay
+    
+    ```yaml
+    # overlays/staging/kustomization.yaml
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    
+    namespace: staging
+    namePrefix: stg-
+    
+    bases:
+      - ../../base
+    
+    commonLabels:
+      environment: staging
+    
+    patches:
+      - target:
+          kind: ResourceGroup
+        patch: |-
+          - op: replace
+            path: /spec/location
+            value: eastus
+          - op: add
+            path: /spec/tags/environment
+            value: staging
+      
+      - target:
+          kind: StorageAccount
+        patch: |-
+          - op: replace
+            path: /spec/sku/name
+            value: Standard_GRS
+          - op: replace
+            path: /spec/properties/accessTier
+            value: Hot
+    ```
+    
+    ## Production Overlay
+    
+    ```yaml
+    # overlays/production/kustomization.yaml
+    apiVersion: kustomize.config.k8s.io/v1beta1
+    kind: Kustomization
+    
+    namespace: production
+    namePrefix: prod-
+    
+    bases:
+      - ../../base
+    
+    commonLabels:
+      environment: production
+    
+    patches:
+      - target:
+          kind: ResourceGroup
+        patch: |-
+          - op: replace
+            path: /spec/location
+            value: eastus2  # Different region for prod
+          - op: add
+            path: /spec/tags/environment
+            value: production
+          - op: add
+            path: /spec/tags/criticality
+            value: high
+      
+      - target:
+          kind: StorageAccount
+        patch: |-
+          - op: replace
+            path: /spec/sku/name
+            value: Standard_RAGRS  # Geo-redundant for prod
+          - op: replace
+            path: /spec/properties/accessTier
+            value: Hot
+    ```
+    
+    ## Deployment Commands
+    
+    ### Dev Environment
+    ```bash
+    kubectl apply -k overlays/dev/
+    ```
+    
+    ### Staging Environment
+    ```bash
+    kubectl apply -k overlays/staging/
+    ```
+    
+    ### Production Environment
+    ```bash
+    kubectl apply -k overlays/production/
+    ```
+    
+    ## Viewing Generated Manifests
+    
+    ```bash
+    # Preview dev environment
+    kubectl kustomize overlays/dev/
+    
+    # Preview staging environment
+    kubectl kustomize overlays/staging/
+    
+    # Preview production environment
+    kubectl kustomize overlays/production/
+    ```
+    
+    ## GitOps Integration
+    
+    ### With Flux
+    ```yaml
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: dev-infrastructure
+      namespace: flux-system
+    spec:
+      interval: 5m
+      path: ./overlays/dev
+      prune: true
+      sourceRef:
+        kind: GitRepository
+        name: infrastructure
+    ```
+    
+    ### With Argo CD
+    ```yaml
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: dev-infrastructure
+      namespace: argocd
+    spec:
+      source:
+        repoURL: https://github.com/your-org/infrastructure
+        targetRevision: main
+        path: overlays/dev
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: dev
+      syncPolicy:
+        automated:
+          prune: true
+    ```
+    
+    ## Environment-Specific Secrets
+    
+    Use different secrets per environment:
+    
+    ```bash
+    # Dev
+    kubectl create secret generic azure-credentials \
+      --namespace dev \
+      --from-literal=AZURE_SUBSCRIPTION_ID=$DEV_SUB_ID \
+      --from-literal=AZURE_TENANT_ID=$TENANT_ID \
+      --from-literal=AZURE_CLIENT_ID=$DEV_CLIENT_ID \
+      --from-literal=AZURE_CLIENT_SECRET=$DEV_CLIENT_SECRET
+    
+    # Production
+    kubectl create secret generic azure-credentials \
+      --namespace production \
+      --from-literal=AZURE_SUBSCRIPTION_ID=$PROD_SUB_ID \
+      --from-literal=AZURE_TENANT_ID=$TENANT_ID \
+      --from-literal=AZURE_CLIENT_ID=$PROD_CLIENT_ID \
+      --from-literal=AZURE_CLIENT_SECRET=$PROD_CLIENT_SECRET
+    ```
+    
+    ## Best Practices
+    
+    1. **Keep base minimal**: Only shared configuration
+    2. **Use strategic merge patches**: For simple changes
+    3. **Use JSON patches**: For complex transformations
+    4. **Separate secrets**: Different credentials per environment
+    5. **Test overlays**: Always preview with `kubectl kustomize`
+    6. **Version overlays**: Tag production overlays
+    
+    ## Testing
+    
+    ```bash
+    # Validate all environments
+    for env in dev staging production; do
+      echo "Validating $env..."
+      kubectl kustomize overlays/$env/ | kubectl apply --dry-run=client -f -
+    done
+    ```

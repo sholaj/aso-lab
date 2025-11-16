@@ -1,0 +1,326 @@
+# Kustomization for Infrastructure with Flux
+# This tells Flux what to deploy and how
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  # Source reference
+  sourceRef:
+    kind: GitRepository
+    name: infrastructure-repo
+  
+  # Path in the repository
+  path: ./infrastructure
+  
+  # How often to reconcile
+  interval: 5m
+  
+  # Reconcile even if Git hasn't changed (useful for drift detection)
+  # force: false
+  
+  # Prune resources that are no longer in Git
+  prune: true
+  
+  # Wait for resources to be ready before proceeding
+  wait: true
+  
+  # Timeout for waiting
+  timeout: 10m
+  
+  # Health checks
+  healthChecks:
+    - apiVersion: resources.azure.com/v1api20200601
+      kind: ResourceGroup
+      name: infrastructure-rg
+      namespace: default
+    - apiVersion: storage.azure.com/v1api20230101
+      kind: StorageAccount
+      name: infrasa001
+      namespace: default
+  
+  # Retry configuration
+  retryInterval: 1m
+  
+  # Dependencies (deploy this after other kustomizations)
+  # dependsOn:
+  #   - name: cert-manager
+  #   - name: external-secrets
+  
+  # Post-build variable substitution
+  # postBuild:
+  #   substitute:
+  #     CLUSTER_NAME: "my-cluster"
+  #     ENVIRONMENT: "production"
+  
+  # Patches to apply
+  # patches:
+  #   - patch: |
+  #       - op: replace
+  #         path: /spec/location
+  #         value: westus2
+  #     target:
+  #       kind: ResourceGroup
+---
+# Separate Kustomization for each environment
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-dev
+  namespace: flux-system
+spec:
+  sourceRef:
+    kind: GitRepository
+    name: infrastructure-repo
+  path: ./overlays/dev
+  interval: 2m
+  prune: true
+  wait: true
+  timeout: 5m
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-staging
+  namespace: flux-system
+spec:
+  sourceRef:
+    kind: GitRepository
+    name: infrastructure-repo
+  path: ./overlays/staging
+  interval: 5m
+  prune: true
+  wait: true
+  timeout: 10m
+  # Only deploy staging after dev is ready
+  dependsOn:
+    - name: infrastructure-dev
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure-production
+  namespace: flux-system
+spec:
+  sourceRef:
+    kind: GitRepository
+    name: infrastructure-repo
+  path: ./overlays/production
+  interval: 10m
+  prune: false  # Don't auto-prune in production
+  wait: true
+  timeout: 15m
+  # Only deploy production after staging is ready
+  dependsOn:
+    - name: infrastructure-staging
+---
+# ConfigMap with examples
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kustomization-guide
+  namespace: flux-system
+data:
+  README.md: |
+    # Flux Kustomization Guide
+    
+    ## Creating Kustomizations
+    
+    ### Using kubectl
+    ```bash
+    kubectl apply -f 03-kustomization-infrastructure.yaml
+    ```
+    
+    ### Using Flux CLI
+    ```bash
+    flux create kustomization infrastructure \
+      --source=GitRepository/infrastructure-repo \
+      --path="./infrastructure" \
+      --prune=true \
+      --interval=5m \
+      --health-check-timeout=3m
+    ```
+    
+    ## Monitoring Kustomizations
+    
+    ```bash
+    # List all kustomizations
+    flux get kustomizations
+    
+    # Watch kustomization status
+    flux get kustomizations --watch
+    
+    # Get detailed info
+    kubectl describe kustomization infrastructure -n flux-system
+    
+    # View last applied revision
+    kubectl get kustomization infrastructure -n flux-system -o jsonpath='{.status.lastAppliedRevision}'
+    ```
+    
+    ## Sync Strategies
+    
+    ### Auto-sync (Recommended for Dev)
+    ```yaml
+    spec:
+      interval: 1m
+      prune: true
+      wait: true
+    ```
+    
+    ### Manual sync (Recommended for Production)
+    ```yaml
+    spec:
+      interval: 1h  # Check but don't auto-apply
+      prune: false
+      wait: true
+      suspend: true  # Requires manual approval
+    ```
+    
+    ## Triggering Reconciliation
+    
+    ```bash
+    # Reconcile immediately
+    flux reconcile kustomization infrastructure
+    
+    # Reconcile with source update
+    flux reconcile kustomization infrastructure --with-source
+    
+    # Suspend reconciliation
+    flux suspend kustomization infrastructure
+    
+    # Resume reconciliation
+    flux resume kustomization infrastructure
+    ```
+    
+    ## Progressive Delivery
+    
+    Deploy environments in sequence:
+    
+    ```yaml
+    # Dev (immediate)
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: dev
+    spec:
+      interval: 2m
+      path: ./overlays/dev
+    ---
+    # Staging (after dev)
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: staging
+    spec:
+      interval: 5m
+      path: ./overlays/staging
+      dependsOn:
+        - name: dev
+    ---
+    # Production (after staging, manual approval)
+    apiVersion: kustomize.toolkit.fluxcd.io/v1
+    kind: Kustomization
+    metadata:
+      name: production
+    spec:
+      interval: 10m
+      path: ./overlays/production
+      suspend: true  # Requires manual resume
+      dependsOn:
+        - name: staging
+    ```
+    
+    Deploy production manually:
+    ```bash
+    flux resume kustomization production
+    ```
+    
+    ## Variable Substitution
+    
+    Replace variables in manifests:
+    
+    ```yaml
+    spec:
+      postBuild:
+        substitute:
+          CLUSTER_NAME: "my-aks-cluster"
+          REGION: "eastus"
+          ENVIRONMENT: "production"
+        substituteFrom:
+          - kind: ConfigMap
+            name: cluster-vars
+          - kind: Secret
+            name: cluster-secrets
+    ```
+    
+    Use in manifests:
+    ```yaml
+    apiVersion: resources.azure.com/v1api20200601
+    kind: ResourceGroup
+    metadata:
+      name: ${CLUSTER_NAME}-rg
+    spec:
+      location: ${REGION}
+      tags:
+        environment: ${ENVIRONMENT}
+    ```
+    
+    ## Health Checks
+    
+    Monitor resource health:
+    
+    ```yaml
+    spec:
+      healthChecks:
+        - apiVersion: storage.azure.com/v1api20230101
+          kind: StorageAccount
+          name: mysa001
+          namespace: default
+    ```
+    
+    ## Troubleshooting
+    
+    ### Kustomization not ready
+    ```bash
+    # Check conditions
+    kubectl get kustomization infrastructure -n flux-system -o jsonpath='{.status.conditions}'
+    
+    # View detailed status
+    flux get kustomization infrastructure
+    
+    # Check logs
+    kubectl logs -n flux-system deployment/kustomize-controller
+    ```
+    
+    ### Resources not applying
+    ```bash
+    # Force reconciliation
+    flux reconcile kustomization infrastructure --with-source
+    
+    # Check for errors
+    kubectl describe kustomization infrastructure -n flux-system
+    
+    # Validate manifests locally
+    kubectl kustomize ./infrastructure
+    ```
+    
+    ### Prune issues
+    ```bash
+    # Check what would be pruned
+    kubectl get kustomization infrastructure -n flux-system -o jsonpath='{.status.inventory}'
+    
+    # Disable prune temporarily
+    kubectl patch kustomization infrastructure -n flux-system -p '{"spec":{"prune":false}}' --type=merge
+    ```
+    
+    ## Best Practices
+    
+    1. **Use dependencies**: Order deployments correctly
+    2. **Enable health checks**: Catch issues early
+    3. **Set appropriate intervals**: Balance freshness vs load
+    4. **Use wait: true**: Ensure resources are ready
+    5. **Test with suspend**: Validate before auto-sync
+    6. **Monitor actively**: Watch for drift and errors

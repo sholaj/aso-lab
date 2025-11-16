@@ -1,0 +1,253 @@
+# Storage Account with Lifecycle Management
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: azure-storage-lifecycle
+---
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: storage-lifecycle-rg
+  namespace: azure-storage-lifecycle
+spec:
+  location: eastus
+  tags:
+    purpose: lifecycle-demo
+---
+# Storage Account with lifecycle policies
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: lifecyclesa001
+  namespace: azure-storage-lifecycle
+spec:
+  owner:
+    name: storage-lifecycle-rg
+  location: eastus
+  kind: StorageV2
+  sku:
+    name: Standard_LRS
+  properties:
+    accessTier: Hot
+    allowBlobPublicAccess: false
+    minimumTlsVersion: TLS1_2
+    supportsHttpsTrafficOnly: true
+    encryption:
+      services:
+        blob:
+          enabled: true
+      keySource: Microsoft.Storage
+  tags:
+    feature: lifecycle-management
+---
+# Blob Service with versioning
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsBlobService
+metadata:
+  name: lifecyclesa001-blob
+  namespace: azure-storage-lifecycle
+spec:
+  owner:
+    name: lifecyclesa001
+  properties:
+    deleteRetentionPolicy:
+      enabled: true
+      days: 30
+    containerDeleteRetentionPolicy:
+      enabled: true
+      days: 30
+    isVersioningEnabled: true
+    changeFeed:
+      enabled: true
+      retentionInDays: 7
+---
+# Container for data with lifecycle
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsBlobServicesContainer
+metadata:
+  name: data-with-lifecycle
+  namespace: azure-storage-lifecycle
+spec:
+  owner:
+    name: lifecyclesa001-blob
+  properties:
+    publicAccess: None
+    metadata:
+      purpose: "data-with-auto-tiering"
+---
+# ConfigMap with lifecycle policy examples
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lifecycle-examples
+  namespace: azure-storage-lifecycle
+data:
+  README.md: |
+    # Storage Lifecycle Management
+    
+    ## Overview
+    This example demonstrates Azure Storage lifecycle management policies for
+    automatic tiering and deletion of blobs based on age.
+    
+    ## Lifecycle Policy Examples
+    
+    ### Policy 1: Archive old data
+    ```bash
+    az storage account management-policy create \
+      --account-name lifecyclesa001 \
+      --resource-group storage-lifecycle-rg \
+      --policy '{
+        "rules": [
+          {
+            "name": "archive-after-90-days",
+            "enabled": true,
+            "type": "Lifecycle",
+            "definition": {
+              "filters": {
+                "blobTypes": ["blockBlob"],
+                "prefixMatch": ["data-with-lifecycle/"]
+              },
+              "actions": {
+                "baseBlob": {
+                  "tierToCool": {
+                    "daysAfterModificationGreaterThan": 30
+                  },
+                  "tierToArchive": {
+                    "daysAfterModificationGreaterThan": 90
+                  },
+                  "delete": {
+                    "daysAfterModificationGreaterThan": 365
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }'
+    ```
+    
+    ### Policy 2: Delete old snapshots
+    ```bash
+    az storage account management-policy create \
+      --account-name lifecyclesa001 \
+      --resource-group storage-lifecycle-rg \
+      --policy '{
+        "rules": [
+          {
+            "name": "delete-old-snapshots",
+            "enabled": true,
+            "type": "Lifecycle",
+            "definition": {
+              "filters": {
+                "blobTypes": ["blockBlob"]
+              },
+              "actions": {
+                "snapshot": {
+                  "delete": {
+                    "daysAfterCreationGreaterThan": 30
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }'
+    ```
+    
+    ### Policy 3: Tiering strategy for logs
+    ```bash
+    az storage account management-policy create \
+      --account-name lifecyclesa001 \
+      --resource-group storage-lifecycle-rg \
+      --policy '{
+        "rules": [
+          {
+            "name": "log-tiering",
+            "enabled": true,
+            "type": "Lifecycle",
+            "definition": {
+              "filters": {
+                "blobTypes": ["blockBlob"],
+                "prefixMatch": ["logs/"]
+              },
+              "actions": {
+                "baseBlob": {
+                  "tierToCool": {
+                    "daysAfterModificationGreaterThan": 7
+                  },
+                  "tierToArchive": {
+                    "daysAfterModificationGreaterThan": 30
+                  },
+                  "delete": {
+                    "daysAfterModificationGreaterThan": 90
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }'
+    ```
+    
+    ## Access Tiers
+    
+    - **Hot**: Frequent access, highest storage cost, lowest access cost
+    - **Cool**: Infrequent access (30+ days), lower storage cost, higher access cost
+    - **Archive**: Rarely accessed (180+ days), lowest storage cost, highest access cost
+    
+    ## Cost Savings Example
+    
+    For 1TB of data accessed once per month:
+    
+    | Tier    | Storage Cost/Month | Access Cost | Total  |
+    |---------|-------------------|-------------|--------|
+    | Hot     | $18               | $1          | $19    |
+    | Cool    | $10               | $10         | $20    |
+    | Archive | $2                | $50         | $52    |
+    
+    Best tier depends on access patterns!
+    
+    ## Testing Lifecycle Policies
+    
+    ```bash
+    # Upload test files
+    for i in {1..10}; do
+      echo "Test file $i" > test$i.txt
+      az storage blob upload \
+        --account-name lifecyclesa001 \
+        --container-name data-with-lifecycle \
+        --name test$i.txt \
+        --file test$i.txt \
+        --auth-mode login
+    done
+    
+    # Check blob tiers
+    az storage blob list \
+      --account-name lifecyclesa001 \
+      --container-name data-with-lifecycle \
+      --query "[].{name:name, tier:properties.blobTier}" \
+      --output table \
+      --auth-mode login
+    ```
+    
+    ## Monitoring
+    
+    ```bash
+    # View lifecycle policy
+    az storage account management-policy show \
+      --account-name lifecyclesa001 \
+      --resource-group storage-lifecycle-rg
+    
+    # Check storage metrics
+    az monitor metrics list \
+      --resource /subscriptions/<sub-id>/resourceGroups/storage-lifecycle-rg/providers/Microsoft.Storage/storageAccounts/lifecyclesa001 \
+      --metric UsedCapacity \
+      --interval PT1H
+    ```
+    
+    ## Cleanup
+    ```bash
+    kubectl delete namespace azure-storage-lifecycle
+    ```

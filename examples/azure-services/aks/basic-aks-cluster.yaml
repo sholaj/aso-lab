@@ -1,0 +1,246 @@
+# Basic AKS Cluster Example
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: azure-aks
+---
+# Resource Group for AKS
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: aks-demo-rg
+  namespace: azure-aks
+spec:
+  location: eastus
+  tags:
+    environment: demo
+    service: aks
+    managed-by: aso
+---
+# Basic AKS Cluster
+apiVersion: containerservice.azure.com/v1api20231001
+kind: ManagedCluster
+metadata:
+  name: myakscluster
+  namespace: azure-aks
+spec:
+  owner:
+    name: aks-demo-rg
+  location: eastus
+  
+  # Identity
+  identity:
+    type: SystemAssigned
+  
+  # DNS prefix for cluster FQDN
+  dnsPrefix: myakscluster
+  
+  # Kubernetes version
+  kubernetesVersion: "1.28.3"
+  
+  # System node pool (required)
+  agentPoolProfiles:
+    - name: systempool
+      count: 2
+      vmSize: Standard_D2s_v3
+      osType: Linux
+      mode: System  # System node pool
+      type: VirtualMachineScaleSets
+      enableAutoScaling: false
+      
+      # Node labels
+      nodeLabels:
+        role: system
+      
+      # Node taints (prevents app pods from scheduling on system nodes)
+      nodeTaints:
+        - CriticalAddonsOnly=true:NoSchedule
+      
+      # OS disk
+      osDiskSizeGB: 128
+      osDiskType: Managed
+      
+      # Networking
+      vnetSubnetReference: {}  # Use default VNET
+      maxPods: 30
+  
+  # Network Profile
+  networkProfile:
+    networkPlugin: kubenet  # or 'azure' for Azure CNI
+    loadBalancerSku: standard
+    outboundType: loadBalancer
+    serviceCidr: 10.0.0.0/16
+    dnsServiceIP: 10.0.0.10
+    
+    # Network Policy (optional)
+    # networkPolicy: azure  # or 'calico'
+  
+  # Add-ons and features
+  addonProfiles:
+    # HTTP Application Routing (not recommended for production)
+    httpApplicationRouting:
+      enabled: false
+    
+    # Azure Policy
+    azurepolicy:
+      enabled: false
+  
+  # API Server access
+  apiServerAccessProfile:
+    enablePrivateCluster: false  # Set to true for private cluster
+  
+  # Azure AD Integration (optional)
+  # aadProfile:
+  #   managed: true
+  #   enableAzureRBAC: true
+  
+  # Auto-upgrade channel (optional)
+  autoUpgradeProfile:
+    upgradeChannel: stable  # none, patch, stable, rapid, node-image
+  
+  # Security profile
+  securityProfile:
+    defender:
+      securityMonitoring:
+        enabled: false
+  
+  tags:
+    purpose: demo
+    tier: basic
+---
+# ConfigMap with usage instructions
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aks-usage
+  namespace: azure-aks
+data:
+  README.md: |
+    # AKS Cluster Usage
+    
+    ## Wait for Cluster Creation
+    AKS cluster creation takes 10-15 minutes. Monitor progress:
+    ```bash
+    kubectl get managedcluster myakscluster -n azure-aks -w
+    ```
+    
+    ## Get Cluster Credentials
+    ```bash
+    # Get credentials
+    az aks get-credentials \
+      --resource-group aks-demo-rg \
+      --name myakscluster
+    
+    # Verify connection
+    kubectl get nodes
+    kubectl get pods --all-namespaces
+    ```
+    
+    ## Deploy a Test Application
+    ```bash
+    # Create a deployment
+    kubectl create deployment nginx --image=nginx
+    
+    # Expose as LoadBalancer
+    kubectl expose deployment nginx --type=LoadBalancer --port=80
+    
+    # Get external IP
+    kubectl get service nginx -w
+    ```
+    
+    ## Add a User Node Pool
+    ```bash
+    az aks nodepool add \
+      --resource-group aks-demo-rg \
+      --cluster-name myakscluster \
+      --name userpool \
+      --node-count 2 \
+      --node-vm-size Standard_D2s_v3 \
+      --mode User
+    ```
+    
+    ## Enable Auto-scaling
+    ```bash
+    az aks nodepool update \
+      --resource-group aks-demo-rg \
+      --cluster-name myakscluster \
+      --name userpool \
+      --enable-cluster-autoscaler \
+      --min-count 1 \
+      --max-count 5
+    ```
+    
+    ## Enable Monitoring
+    ```bash
+    # Create Log Analytics workspace first
+    kubectl apply -f ../log-analytics/basic-log-analytics.yaml
+    
+    # Get workspace ID
+    WORKSPACE_ID=$(az monitor log-analytics workspace show \
+      --resource-group monitoring-demo-rg \
+      --workspace-name myloganalytics001 \
+      --query id -o tsv)
+    
+    # Enable monitoring
+    az aks enable-addons \
+      --resource-group aks-demo-rg \
+      --name myakscluster \
+      --addons monitoring \
+      --workspace-resource-id $WORKSPACE_ID
+    ```
+    
+    ## Upgrade Cluster
+    ```bash
+    # Check available versions
+    az aks get-versions --location eastus --output table
+    
+    # Upgrade
+    az aks upgrade \
+      --resource-group aks-demo-rg \
+      --name myakscluster \
+      --kubernetes-version 1.28.5
+    ```
+    
+    ## Scale Node Pool
+    ```bash
+    az aks nodepool scale \
+      --resource-group aks-demo-rg \
+      --cluster-name myakscluster \
+      --name systempool \
+      --node-count 3
+    ```
+    
+    ## Troubleshooting
+    ```bash
+    # View cluster details
+    kubectl describe managedcluster myakscluster -n azure-aks
+    
+    # Check nodes
+    kubectl get nodes -o wide
+    
+    # Check system pods
+    kubectl get pods -n kube-system
+    
+    # View cluster events
+    kubectl get events --all-namespaces --sort-by='.lastTimestamp'
+    ```
+    
+    ## Cost Management
+    ```bash
+    # Stop cluster (preserves configuration, no compute charges)
+    az aks stop --resource-group aks-demo-rg --name myakscluster
+    
+    # Start cluster
+    az aks start --resource-group aks-demo-rg --name myakscluster
+    ```
+    
+    ## Cleanup
+    ```bash
+    # Delete cluster (this takes several minutes)
+    kubectl delete managedcluster myakscluster -n azure-aks
+    
+    # Or delete entire resource group
+    kubectl delete resourcegroup aks-demo-rg -n azure-aks
+    ```

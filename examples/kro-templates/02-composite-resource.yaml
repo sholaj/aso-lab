@@ -1,0 +1,226 @@
+# Composite Resource Template
+# This template creates a Storage Account with Blob Services and Containers
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aso-composite
+  labels:
+    app.kubernetes.io/managed-by: kro
+---
+# Resource Group
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: composite-rg
+  namespace: aso-composite
+  labels:
+    template: composite
+spec:
+  location: eastus
+  tags:
+    purpose: composite-demo
+    pattern: multi-resource
+---
+# Storage Account
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: compositesa001
+  namespace: aso-composite
+  labels:
+    template: composite
+    component: storage
+spec:
+  owner:
+    name: composite-rg
+  location: eastus
+  kind: StorageV2
+  sku:
+    name: Standard_LRS
+  properties:
+    accessTier: Hot
+    allowBlobPublicAccess: false
+    minimumTlsVersion: TLS1_2
+    supportsHttpsTrafficOnly: true
+    encryption:
+      services:
+        blob:
+          enabled: true
+        file:
+          enabled: true
+      keySource: Microsoft.Storage
+---
+# Blob Service (child of Storage Account)
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsBlobService
+metadata:
+  name: compositesa001-blob
+  namespace: aso-composite
+  labels:
+    template: composite
+    component: blob-service
+spec:
+  owner:
+    name: compositesa001
+  properties:
+    deleteRetentionPolicy:
+      enabled: true
+      days: 7
+    containerDeleteRetentionPolicy:
+      enabled: true
+      days: 7
+    changeFeed:
+      enabled: false
+    isVersioningEnabled: true
+---
+# Container 1: Application Data
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsBlobServicesContainer
+metadata:
+  name: app-data
+  namespace: aso-composite
+  labels:
+    template: composite
+    component: container
+    purpose: app-data
+spec:
+  owner:
+    name: compositesa001-blob
+  properties:
+    publicAccess: None
+    metadata:
+      purpose: "application-data"
+      retention: "7-days"
+---
+# Container 2: Logs
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsBlobServicesContainer
+metadata:
+  name: logs
+  namespace: aso-composite
+  labels:
+    template: composite
+    component: container
+    purpose: logs
+spec:
+  owner:
+    name: compositesa001-blob
+  properties:
+    publicAccess: None
+    metadata:
+      purpose: "application-logs"
+      retention: "30-days"
+---
+# Container 3: Backups
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsBlobServicesContainer
+metadata:
+  name: backups
+  namespace: aso-composite
+  labels:
+    template: composite
+    component: container
+    purpose: backups
+spec:
+  owner:
+    name: compositesa001-blob
+  properties:
+    publicAccess: None
+    metadata:
+      purpose: "backup-storage"
+      retention: "90-days"
+---
+# File Service (for SMB shares)
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccountsFileService
+metadata:
+  name: compositesa001-file
+  namespace: aso-composite
+  labels:
+    template: composite
+    component: file-service
+spec:
+  owner:
+    name: compositesa001
+  properties:
+    shareDeleteRetentionPolicy:
+      enabled: true
+      days: 7
+---
+# Documentation ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: composite-template-docs
+  namespace: aso-composite
+data:
+  README.md: |
+    # Composite Resource Template
+    
+    ## Description
+    This template demonstrates creating a complete storage solution with:
+    - Storage Account
+    - Blob Service with retention policies
+    - Multiple containers (app-data, logs, backups)
+    - File Service for SMB shares
+    
+    ## Resource Hierarchy
+    ```
+    ResourceGroup (composite-rg)
+    └── StorageAccount (compositesa001)
+        ├── BlobService
+        │   ├── Container: app-data
+        │   ├── Container: logs
+        │   └── Container: backups
+        └── FileService
+    ```
+    
+    ## Ownership Chain
+    All resources use ASO's ownership model:
+    - Storage Account owned by Resource Group
+    - Services owned by Storage Account
+    - Containers owned by Blob Service
+    
+    Deleting the Resource Group will cascade delete all child resources.
+    
+    ## Usage
+    ```bash
+    # Deploy the entire stack
+    kubectl apply -f 02-composite-resource.yaml
+    
+    # Watch resources being created
+    kubectl get resourcegroups,storageaccounts,storageaccountsblobservices,storageaccountsblobservicescontainers -n aso-composite -w
+    
+    # Check all resources are ready
+    kubectl get all -n aso-composite
+    ```
+    
+    ## Accessing the Storage
+    ```bash
+    # Get storage account keys
+    kubectl get secret -n aso-composite
+    
+    # View storage account details
+    kubectl get storageaccount compositesa001 -n aso-composite -o yaml
+    
+    # List containers in Azure
+    az storage container list --account-name compositesa001 --auth-mode login
+    ```
+    
+    ## Cleanup
+    ```bash
+    # Delete everything (cascades from ResourceGroup)
+    kubectl delete resourcegroup composite-rg -n aso-composite
+    
+    # Or delete the entire namespace
+    kubectl delete namespace aso-composite
+    ```
+    
+    ## Customization Tips
+    - Adjust retention policies in blob/file services
+    - Add more containers as needed
+    - Modify storage account SKU for different performance
+    - Add lifecycle management policies
+    - Enable metrics and logging
