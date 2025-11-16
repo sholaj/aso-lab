@@ -1,0 +1,15 @@
+apiVersion: v2
+name: aso-app-stack
+description: A Helm chart for deploying Azure infrastructure using ASO
+type: application
+version: 1.0.0
+appVersion: "1.0"
+keywords:
+  - azure
+  - aso
+  - infrastructure
+  - kro
+home: https://github.com/Azure/azure-service-operator
+maintainers:
+  - name: DevOps Team
+    email: devops@example.com

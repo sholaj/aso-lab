@@ -1,0 +1,15 @@
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: asolabstorage
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: aso-lab-rg
+  kind: StorageV2
+  sku:
+    name: Standard_LRS
+  accessTier: Hot
+  allowBlobPublicAccess: false
+  minimumTlsVersion: TLS1_2

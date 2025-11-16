@@ -1,0 +1,43 @@
+apiVersion: network.azure.com/v1api20201101
+kind: VirtualNetwork
+metadata:
+  name: aso-lab-vnet-multi
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: aso-lab-rg
+  addressSpace:
+    addressPrefixes:
+    - 10.0.0.0/16
+  subnets:
+  # Frontend subnet for web tier
+  - name: frontend-subnet
+    properties:
+      addressPrefix: 10.0.1.0/24
+      serviceEndpoints:
+      - service: Microsoft.Storage
+      - service: Microsoft.KeyVault
+  
+  # Backend subnet for application tier
+  - name: backend-subnet
+    properties:
+      addressPrefix: 10.0.2.0/24
+      serviceEndpoints:
+      - service: Microsoft.Sql
+      - service: Microsoft.Storage
+  
+  # Data subnet for database tier
+  - name: data-subnet
+    properties:
+      addressPrefix: 10.0.3.0/24
+      serviceEndpoints:
+      - service: Microsoft.Sql
+  
+  # AKS subnet with larger address space
+  - name: aks-subnet
+    properties:
+      addressPrefix: 10.0.10.0/23
+      serviceEndpoints:
+      - service: Microsoft.Storage
+      - service: Microsoft.ContainerRegistry

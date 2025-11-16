@@ -1,0 +1,13 @@
+apiVersion: resources.azure.com/v1api20200601
+kind: ResourceGroup
+metadata:
+  name: aso-lab-rg-tagged
+  namespace: default
+spec:
+  location: eastus
+  tags:
+    Environment: Development
+    Project: ASO-Lab
+    ManagedBy: ASO
+    Owner: DevOps-Team
+    CostCenter: Engineering

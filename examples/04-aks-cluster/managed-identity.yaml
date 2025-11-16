@@ -1,0 +1,9 @@
+apiVersion: managedidentity.azure.com/v1api20230131
+kind: UserAssignedIdentity
+metadata:
+  name: aks-identity
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: aso-lab-rg

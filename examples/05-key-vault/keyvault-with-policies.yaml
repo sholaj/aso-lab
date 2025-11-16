@@ -1,0 +1,70 @@
+apiVersion: keyvault.azure.com/v1api20210401preview
+kind: Vault
+metadata:
+  name: aso-lab-kv-policies
+  namespace: default
+spec:
+  location: eastus
+  owner:
+    name: aso-lab-rg
+  properties:
+    sku:
+      family: A
+      name: standard
+    tenantId: "<your-tenant-id>"  # Replace with your Azure AD tenant ID
+    
+    # Access policies configuration
+    accessPolicies:
+    # Policy for AKS managed identity
+    - objectId: "<aks-identity-object-id>"  # Replace with managed identity object ID
+      permissions:
+        secrets:
+        - get
+        - list
+        certificates:
+        - get
+        - list
+      tenantId: "<your-tenant-id>"
+    
+    # Policy for admin user/service principal
+    - objectId: "<admin-object-id>"  # Replace with admin object ID
+      permissions:
+        secrets:
+        - get
+        - list
+        - set
+        - delete
+        - recover
+        - backup
+        - restore
+        keys:
+        - get
+        - list
+        - create
+        - delete
+        - update
+        certificates:
+        - get
+        - list
+        - create
+        - delete
+        - update
+      tenantId: "<your-tenant-id>"
+    
+    # Enable features
+    enableSoftDelete: true
+    softDeleteRetentionInDays: 90
+    enablePurgeProtection: true
+    enableRbacAuthorization: false  # Using access policies instead
+    
+    # Network ACLs
+    networkAcls:
+      defaultAction: Allow
+      bypass: AzureServices
+      ipRules: []
+      virtualNetworkRules: []
+    
+  tags:
+    Environment: Production
+    ManagedBy: ASO
+    Security: High

@@ -1,0 +1,44 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: default
+
+bases:
+- ../../base
+
+nameSuffix: -prod
+
+commonLabels:
+  environment: production
+
+patches:
+- patch: |-
+    - op: replace
+      path: /spec/tags
+      value:
+        Environment: Production
+        ManagedBy: Kustomize-ASO
+        CostCenter: ProdOps
+        Compliance: Required
+  target:
+    kind: ResourceGroup
+    name: kustomize-app-rg
+
+- patch: |-
+    - op: replace
+      path: /spec/sku/name
+      value: Standard_GRS
+  target:
+    kind: StorageAccount
+    name: kustomizeappsa
+
+- patch: |-
+    - op: add
+      path: /spec/enableHttpsTrafficOnly
+      value: true
+    - op: add
+      path: /spec/minimumTlsVersion
+      value: TLS1_2
+  target:
+    kind: StorageAccount
+    name: kustomizeappsa

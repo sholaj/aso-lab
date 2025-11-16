@@ -1,0 +1,52 @@
+# Default values for aso-app-stack
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  location: eastus
+  tenantId: "<your-tenant-id>"  # Replace with your Azure AD tenant ID
+
+# Resource Group settings
+resourceGroup:
+  name: helm-app-rg
+  tags:
+    ManagedBy: Helm
+    Pattern: KRO-Composite
+
+# Virtual Network settings
+vnet:
+  name: helm-app-vnet
+  addressSpace: 10.60.0.0/16
+  subnets:
+    - name: web-subnet
+      addressPrefix: 10.60.1.0/24
+    - name: app-subnet
+      addressPrefix: 10.60.2.0/24
+    - name: data-subnet
+      addressPrefix: 10.60.3.0/24
+
+# Storage Account settings
+storage:
+  name: helmappsa
+  sku: Standard_LRS
+  kind: StorageV2
+  accessTier: Hot
+  httpsOnly: true
+  minTlsVersion: TLS1_2
+  exportSecrets: true
+  secretName: helm-storage-keys
+
+# Key Vault settings
+keyVault:
+  enabled: true
+  name: helm-app-kv
+  sku: standard
+  softDelete: true
+  softDeleteRetentionDays: 7
+  rbacAuthorization: true
+
+# Tags applied to all resources
+commonTags:
+  Project: ASO-Lab
+  Environment: Development

@@ -1,0 +1,32 @@
+apiVersion: storage.azure.com/v1api20230101
+kind: StorageAccount
+metadata:
+  name: {{ .Values.storage.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: {{ include "aso-app-stack.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  location: {{ .Values.global.location }}
+  owner:
+    name: {{ .Values.resourceGroup.name }}
+  kind: {{ .Values.storage.kind }}
+  sku:
+    name: {{ .Values.storage.sku }}
+  accessTier: {{ .Values.storage.accessTier }}
+  enableHttpsTrafficOnly: {{ .Values.storage.httpsOnly }}
+  minimumTlsVersion: {{ .Values.storage.minTlsVersion }}
+  allowBlobPublicAccess: false
+  tags:
+    {{- toYaml .Values.commonTags | nindent 4 }}
+  {{- if .Values.storage.exportSecrets }}
+  operatorSpec:
+    secrets:
+      key1:
+        name: {{ .Values.storage.secretName }}
+        key: key1
+      connectionString:
+        name: {{ .Values.storage.secretName }}
+        key: connectionString
+  {{- end }}

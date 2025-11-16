@@ -1,0 +1,27 @@
+# Development environment values
+global:
+  location: eastus
+  tenantId: "<your-tenant-id>"
+
+resourceGroup:
+  name: helm-app-dev-rg
+  tags:
+    ManagedBy: Helm
+    Pattern: KRO-Composite
+    Environment: Development
+
+storage:
+  name: helmappdevsa
+  sku: Standard_LRS
+  accessTier: Hot
+
+keyVault:
+  enabled: true
+  name: helm-app-dev-kv
+  sku: standard
+  softDeleteRetentionDays: 7
+
+commonTags:
+  Project: ASO-Lab
+  Environment: Development
+  CostCenter: DevTeam
