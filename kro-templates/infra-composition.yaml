@@ -2,7 +2,7 @@
 # This template creates: Resource Group + Key Vault + Storage Account + Log Analytics
 
 apiVersion: kro.run/v1alpha1
-kind: ResourceGroup
+kind: ResourceGraphDefinition
 metadata:
   name: infra-composition-template
 spec:
@@ -11,20 +11,12 @@ spec:
     apiVersion: v1alpha1
     kind: InfraComposition
     spec:
-      projectName:
-        type: string
-        description: "Project name prefix (e.g., 'myapp')"
-      location:
-        type: string
-        description: "Azure region"
-        default: "northeurope"
-      tenantId:
-        type: string
-        description: "Azure AD tenant ID"
-      owner:
-        type: string
-        description: "Owner tag value"
-        default: "shola"
+      projectName: string
+      location: string | default="northeurope"
+      tenantId: string
+      owner: string | default="shola"
+    status:
+      resourceGroupReady: ${resourceGroup.status.conditions}
 
   # Resources to create (order matters for dependencies)
   resources:
@@ -34,13 +26,12 @@ spec:
         apiVersion: resources.azure.com/v1api20200601
         kind: ResourceGroup
         metadata:
-          name: "rg-{{ .spec.projectName }}"
-          namespace: default
+          name: rg-${schema.spec.projectName}
         spec:
-          location: "{{ .spec.location }}"
+          location: ${schema.spec.location}
           tags:
-            project: "{{ .spec.projectName }}"
-            owner: "{{ .spec.owner }}"
+            project: ${schema.spec.projectName}
+            owner: ${schema.spec.owner}
             managed-by: kro
 
     # 2. Storage Account
@@ -49,23 +40,28 @@ spec:
         apiVersion: storage.azure.com/v1api20230101
         kind: StorageAccount
         metadata:
-          name: "st{{ .spec.projectName }}001"
-          namespace: default
+          name: st${schema.spec.projectName}001
         spec:
-          location: "{{ .spec.location }}"
+          location: ${schema.spec.location}
           owner:
-            name: "rg-{{ .spec.projectName }}"
+            name: ${resourceGroup.metadata.name}
           kind: StorageV2
           sku:
             name: Standard_LRS
-          properties:
-            accessTier: Hot
-            allowBlobPublicAccess: false
-            minimumTlsVersion: TLS1_2
-            supportsHttpsTrafficOnly: true
+          accessTier: Hot
+          allowBlobPublicAccess: false
+          minimumTlsVersion: TLS1_2
+          supportsHttpsTrafficOnly: true
+          encryption:
+            keySource: Microsoft.Storage
+            services:
+              blob:
+                enabled: true
+              file:
+                enabled: true
           tags:
-            project: "{{ .spec.projectName }}"
-            owner: "{{ .spec.owner }}"
+            project: ${schema.spec.projectName}
+            owner: ${schema.spec.owner}
             managed-by: kro
 
     # 3. Key Vault
@@ -74,12 +70,11 @@ spec:
         apiVersion: keyvault.azure.com/v1api20230701
         kind: Vault
         metadata:
-          name: "kv-{{ .spec.projectName }}"
-          namespace: default
+          name: kv-${schema.spec.projectName}
         spec:
-          location: "{{ .spec.location }}"
+          location: ${schema.spec.location}
           owner:
-            name: "rg-{{ .spec.projectName }}"
+            name: ${resourceGroup.metadata.name}
           properties:
             enableRbacAuthorization: true
             enableSoftDelete: true
@@ -87,30 +82,33 @@ spec:
             sku:
               family: A
               name: standard
-            tenantId: "{{ .spec.tenantId }}"
+            tenantId: ${schema.spec.tenantId}
             publicNetworkAccess: Enabled
+            networkAcls:
+              bypass: AzureServices
+              defaultAction: Allow
           tags:
-            project: "{{ .spec.projectName }}"
-            owner: "{{ .spec.owner }}"
+            project: ${schema.spec.projectName}
+            owner: ${schema.spec.owner}
             managed-by: kro
 
     # 4. Log Analytics Workspace
     - id: logAnalytics
       template:
-        apiVersion: operationalinsights.azure.com/v1api20221001
+        apiVersion: operationalinsights.azure.com/v1api20210601
         kind: Workspace
         metadata:
-          name: "law-{{ .spec.projectName }}"
-          namespace: default
+          name: law-${schema.spec.projectName}
         spec:
-          location: "{{ .spec.location }}"
+          location: ${schema.spec.location}
           owner:
-            name: "rg-{{ .spec.projectName }}"
-          properties:
-            sku:
-              name: PerGB2018
-            retentionInDays: 30
+            name: ${resourceGroup.metadata.name}
+          sku:
+            name: PerGB2018
+          retentionInDays: 30
+          publicNetworkAccessForIngestion: Enabled
+          publicNetworkAccessForQuery: Enabled
           tags:
-            project: "{{ .spec.projectName }}"
-            owner: "{{ .spec.owner }}"
+            project: ${schema.spec.projectName}
+            owner: ${schema.spec.owner}
             managed-by: kro

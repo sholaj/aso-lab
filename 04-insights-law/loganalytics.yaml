@@ -1,7 +1,7 @@
 # ASO Lab - Phase 3: Log Analytics Workspace
 # Depends on: Resource Group (rg-aso-workloads-shola)
 
-apiVersion: operationalinsights.azure.com/v1api20221001
+apiVersion: operationalinsights.azure.com/v1api20210601
 kind: Workspace
 metadata:
   name: law-aso-lab-shola
